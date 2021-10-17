@@ -152,7 +152,7 @@ create table fource_config (
 	output_phase2_as_csv int, -- Return the data in tables with a single column containing comma separated values
 	save_phase2_as_columns int, -- Save the data as tables with separate columns per field
 	save_phase2_as_prefix varchar(50), -- Table name prefix when saving the data as tables
-    	eval_start_date date -- use this so that dates can be changed consitently throughout the script
+    	start_date date -- use this so that dates can be changed consitently throughout the script
     --blackout_days_before -7 blackout_days_before 14 add these later
 );
 commit;
@@ -514,6 +514,7 @@ create table fource_lab_units_facts (
 
 --188s
 create index fource_lap_map_ndx on fource_lab_map(local_lab_code);
+
 insert into fource_lab_units_facts
 select * from (
 with labs_in_period as (
@@ -2395,14 +2396,14 @@ insert into fource_admissions
 		-- Select by inout_cd
 		select patient_num, trunc(start_date) start_date, trunc(end_date) end_date
 			from "&&crcSchema".visit_dimension
-			where trunc(start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+			where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 				and patient_num in (select patient_num from fource_covid_tests)
 				and inout_cd in (select local_code from fource_code_map where code = 'inpatient_inout_cd')
 		union all
 		-- Select by location_cd
 		select patient_num, trunc(start_date), trunc(end_date)
 			from "&&crcSchema".visit_dimension v
-			where trunc(start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+			where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 				and patient_num in (select patient_num from fource_covid_tests)
 				and location_cd in (select local_code from fource_code_map where code = 'inpatient_location_cd')
 		union all
@@ -2411,7 +2412,7 @@ insert into fource_admissions
 			from "&&crcSchema".observation_fact f
 				inner join "&&crcSchema".visit_dimension v
 					on v.encounter_num=f.encounter_num and v.patient_num=f.patient_num
-			where trunc(f.start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+			where trunc(f.start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 				and f.patient_num in (select patient_num from fource_covid_tests)
 				and f.concept_cd in (select local_code from fource_code_map where code = 'inpatient_concept_cd')
 	) t;
@@ -2443,14 +2444,14 @@ insert into fource_icu
 			-- Select by patient_dimension inout_cd
 			select patient_num, trunc(start_date) start_date, trunc(end_date) end_date
 				from "&&crcSchema".visit_dimension
-				where trunc(start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+				where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 					and patient_num in (select patient_num from fource_covid_tests)
 					and inout_cd in (select local_code from fource_code_map where code = 'icu_inout_cd')
 			union all
 			-- Select by location_cd
 			select patient_num, trunc(start_date) start_date, trunc(end_date) end_date --***** SOMEONE PLEASE AUDIT THIS SECTION******
 				from "&&crcSchema".visit_dimension v
-				where trunc(start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+				where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 					and patient_num in (select patient_num from fource_covid_tests)
 					and location_cd in (select local_code from fource_code_map where code = 'icu_location_cd')
 			union all
@@ -2459,7 +2460,7 @@ insert into fource_icu
 				from "&&crcSchema".observation_fact f
 					inner join "&&crcSchema".visit_dimension v
 						on v.encounter_num=f.encounter_num and v.patient_num=f.patient_num
-				where trunc(f.start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+				where trunc(f.start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 					and f.patient_num in (select patient_num from fource_covid_tests)
 					and f.concept_cd in (select local_code from fource_code_map where code = 'icu_concept_cd')
             union all
@@ -2473,7 +2474,7 @@ insert into fource_icu
 					inner join "&&crcSchema".visit_dimension v
 						on v.encounter_num=f.encounter_num and v.patient_num=f.patient_num
                     inner join fource_icu_location l on l.location_cd = f.location_cd
-				where trunc(f.start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+				where trunc(f.start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 					and f.patient_num in (select patient_num from fource_covid_tests)
                     order by patient_num, start_date
 					--and f.concept_cd in (select local_code from fource_code_map where code = 'icu_fact_location_cd') --**** TODO: CHECK SHOULD THIS BE CONDITIONAL MICHELE FIX THIS 
