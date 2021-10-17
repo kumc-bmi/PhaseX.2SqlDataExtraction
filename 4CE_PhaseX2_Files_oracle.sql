@@ -183,9 +183,13 @@ insert into fource_config
 		0, -- output_phase2_as_csv
 		0, -- save_phase2_as_columns
 		'dbo_FourCE_', -- save_phase2_as_prefix (don't use "4CE" since it starts with a number
-        to_date('01-JAN-2019')
+        to_date('2019-01-01 00:00:00') --'01-JAN-2019' 
     from dual;
 commit;
+
+--test
+--select start_date, trunc(start_date) from "&&crcSchema".observation_fact where rownum = 1;
+--select start_date,trunc(start_date) from fource_config where rownum = 1;
 
 -- ! If your diagnosis codes do not start with a prefix (e.g., "ICD:"),
 -- ! then you will need to customize queries the use the observation_fact table
@@ -503,6 +507,7 @@ update l
 -- Get a list of all the codes and units in the data for 4CE labs since 1/1/2019
 WHENEVER SQLERROR CONTINUE;
 DROP TABLE fource_lab_units_facts;
+drop index fource_lap_map_ndx;
 WHENEVER SQLERROR EXIT;
 create table fource_lab_units_facts (
 	fact_code varchar(50) not null,
@@ -511,9 +516,6 @@ create table fource_lab_units_facts (
 	mean_value numeric(18,5),
 	stdev_value numeric(18,5)
 ); 
-
---188s
-create index fource_lap_map_ndx on fource_lab_map(local_lab_code);
 
 insert into fource_lab_units_facts
 select * from (
@@ -527,6 +529,11 @@ select concept_cd, units_cd, count(*) num_facts, avg(nval_num) avg_val, stddev(n
 from labs_in_period
 group by concept_cd, units_cd);
 commit;
+
+--188s
+create index fource_lap_map_ndx on fource_lab_map(local_lab_code);
+
+
 --select * from fource_lab_units_facts;
 /*
 insert into fource_lab_units_facts
