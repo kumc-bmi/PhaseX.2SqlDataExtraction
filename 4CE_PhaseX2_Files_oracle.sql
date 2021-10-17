@@ -121,11 +121,12 @@ your schema. The code also assumes you have a single fact table called
 --### Example replace @exportFilePath with C:\User\My4ceDir
 --##############################################################################
 set echo on;
-WHENEVER SQLERROR EXIT;
 --------------------------------------------------------------------------------
 -- General settings
 --------------------------------------------------------------------------------
-drop table fource_config; -- make sure everything is clean 
+WHENEVER SQLERROR CONTINUE;
+drop table fource_config; -- make sure everything is clean
+WHENEVER SQLERROR EXIT;
 create table fource_config (
 	siteid varchar(20), -- Up to 20 letters or numbers, must start with letter, no spaces or special characters.
 	race_data_available int, -- 1 if your site collects race/ethnicity data; 0 if your site does not collect this.
@@ -403,7 +404,9 @@ commit;
 -- *   (e.g., see PaO2). Only use this if you are sure what the units are.
 -- *   Add what you think the true units are to the end of the local_lab_name.
 --------------------------------------------------------------------------------
---DROP TABLE fource_lab_map;
+WHENEVER SQLERROR CONTINUE;
+DROP TABLE fource_lab_map;
+WHENEVER SQLERROR EXIT;
 create table fource_lab_map (
 	fource_loinc varchar(20) not null, 
 	fource_lab_units varchar(20) not null, 
@@ -419,33 +422,39 @@ insert into fource_lab_map
 	select fource_loinc, fource_lab_units, fource_lab_name,
 		scale_factor,
 		'LOINC:' || local_lab_code,  -- Change "LOINC:" to your local LOINC code prefix (scheme)
-		local_lab_units, local_lab_name
+		local_lab_units,
+        'KUH|COMPONENT_ID:'||local_lab_name
 	from (
 		select null fource_loinc, null fource_lab_units, null fource_lab_name, 
 				null scale_factor, null local_lab_code, null local_lab_units, null local_lab_name from dual
 			where 1=0
-		union select '1742-6', 'U/L', 'alanine aminotransferase (ALT)', 1, '1742-6', 'U/L', 'YourLocalLabName' 
-		from dual union select '1751-7', 'g/dL', 'albumin', 1, '1751-7', 'g/dL', 'YourLocalLabName' 
-		from dual union  select '1920-8', 'U/L', 'aspartate aminotransferase (AST)', 1, '1920-8', 'U/L', 'YourLocalLabName' 
-		from dual union  select '1975-2', 'mg/dL', 'total bilirubin', 1, '1975-2', 'mg/dL', 'YourLocalLabName' 
-		from dual union  select '1988-5', 'mg/L', 'C-reactive protein (CRP) (Normal Sensitivity)', 1, '1988-5', 'mg/L', 'YourLocalLabName' 
-		from dual union  select '2019-8', 'mmHg', 'PaCO2', 1, '2019-8', 'mmHg', 'YourLocalLabName' 
-		from dual union  select '2160-0', 'mg/dL', 'creatinine', 1, '2160-0', 'mg/dL', 'YourLocalLabName' 
-		from dual union  select '2276-4', 'ng/mL', 'Ferritin', 1, '2276-4', 'ng/mL', 'YourLocalLabName' 
-		from dual union  select '2532-0', 'U/L', 'lactate dehydrogenase (LDH)', 1, '2532-0', 'U/L', 'YourLocalLabName' 
-		from dual union  select '2703-7', 'mmHg', 'PaO2', 1, '2703-7', 'mmHg', 'YourLocalLabName' 
-		from dual union  select '3255-7', 'mg/dL', 'Fibrinogen', 1, '3255-7', 'mg/dL', 'YourLocalLabName' 
-		from dual union  select '33959-8', 'ng/mL', 'procalcitonin', 1, '33959-8', 'ng/mL', 'YourLocalLabName' 
-		from dual union  select '48065-7', 'ng/mL{FEU}', 'D-dimer (FEU)', 1, '48065-7', 'ng/mL{FEU}', 'YourLocalLabName' 
-		from dual union  select '48066-5', 'ng/mL{DDU}', 'D-dimer (DDU)', 1, '48066-5', 'ng/mL{DDU}', 'YourLocalLabName' 
-		from dual union  select '49563-0', 'ng/mL', 'cardiac troponin (High Sensitivity)', 1, '49563-0', 'ng/mL', 'YourLocalLabName' 
-		from dual union  select '6598-7', 'ug/L', 'cardiac troponin (Normal Sensitivity)', 1, '6598-7', 'ug/L', 'YourLocalLabName' 
-		from dual union  select '5902-2', 's', 'prothrombin time (PT)', 1, '5902-2', 's', 'YourLocalLabName' 
-		from dual union  select '6690-2', '10*3/uL', 'white blood cell count (Leukocytes)', 1, '6690-2', '10*3/uL', 'YourLocalLabName' 
-		from dual union  select '731-0', '10*3/uL', 'lymphocyte count', 1, '731-0', '10*3/uL', 'YourLocalLabName'
-		from dual union select '751-8', '10*3/uL', 'neutrophil count', 1, '751-8', '10*3/uL', 'YourLocalLabName'
-		from dual union select '777-3', '10*3/uL', 'platelet count', 1, '777-3', '10*3/uL', 'YourLocalLabName'
-		from dual union select '34714-6', 'DEFAULT', 'INR', 1, '34714-6', 'DEFAULT', 'YourLocalLabName' from dual
+        -- TODO: add propar labname
+		union            select '1742-6',  'U/L',        'alanine aminotransferase (ALT)',                1, '2065',    'U/L',        'YourLocalLabName' 
+		from dual union  select '1751-7',  'g/dL',       'albumin',                                       1, '2023',    'g/dL',       'YourLocalLabName' 
+		from dual union  select '1920-8',  'U/L',        'aspartate aminotransferase (AST)',              1, '2064',    'U/L',        'YourLocalLabName' 
+		from dual union  select '1975-2',  'mg/dL',      'total bilirubin',                               1, '2024',    'mg/dL',      'YourLocalLabName' 
+		from dual union  select '1988-5',  'mg/L',       'C-reactive protein (CRP) (Normal Sensitivity)', 1, '3186',    'mg/L',       'YourLocalLabName' 
+		from dual union  select '2019-8',  'mmHg',       'PaCO2',                                         1, '4003',    'mmHg',       'YourLocalLabName' 
+        from dual union  select '2019-8',  'mmHg',       'PaCO2',                                         1, '4004',    'mmHg',       'YourLocalLabName'
+		from dual union  select '2160-0',  'mg/dL',      'creatinine',                                    1, '2009',    'mg/dL',      'YourLocalLabName' 
+		from dual union  select '2276-4',  'ng/mL',      'Ferritin',                                      1, '3176',    'ng/mL',      'YourLocalLabName' 
+		from dual union  select '2532-0',  'U/L',        'lactate dehydrogenase (LDH)',                   1, '2070',    'U/L',        'YourLocalLabName' 
+		from dual union  select '2703-7',  'mmHg',       'PaO2',                                          1, '4005',    'mmHg',       'YourLocalLabName' 
+        from dual union  select '2703-7',  'mmHg',       'PaO2',                                          1, '4006',    'mmHg',       'YourLocalLabName' 
+		from dual union  select '3255-7',  'mg/dL',      'Fibrinogen',                                    1, '3093',    'mg/dL',      'YourLocalLabName' 
+		from dual union  select '33959-8', 'ng/mL',      'procalcitonin',                                 1, '664',     'ng/mL',      'YourLocalLabName' 
+--		from dual union  select '48065-7', 'ng/mL{FEU}', 'D-dimer (FEU)',                                 1, '48065-7', 'ng/mL{FEU}', 'YourLocalLabName' 
+		from dual union  select '48066-5', 'ng/mL{DDU}', 'D-dimer (DDU)',                                 1, '3094',    'ng/mL{DDU}', 'YourLocalLabName' 
+		from dual union  select '49563-0', 'ng/mL',      'cardiac troponin (High Sensitivity)',           1, '2326',    'ng/mL',      'YourLocalLabName' 
+        from dual union  select '49563-0', 'ng/mL',      'cardiac troponin (High Sensitivity)',           1, '2327',    'ng/mL',      'YourLocalLabName'
+		from dual union  select '6598-7',  'ug/L',       'cardiac troponin (Normal Sensitivity)',         1, '2328',     'ug/L',      'YourLocalLabName' 
+--		from dual union  select '5902-2',  's',          'prothrombin time (PT)',                         1, '5902-2',   's',         'YourLocalLabName' 
+		from dual union  select '6690-2',  '10*3/uL',    'white blood cell count (Leukocytes)',           1, '3009',    '10*3/uL',    'YourLocalLabName' 
+		from dual union  select '731-0',   '10*3/uL',    'lymphocyte count',                              1, '3016',    '10*3/uL',    'YourLocalLabName'
+		from dual union select  '751-8',   '10*3/uL',    'neutrophil count',                              1, '3012',    '10*3/uL',    'YourLocalLabName'
+--		from dual union select  '777-3',   '10*3/uL',    'platelet count',                                1, '777-3',    '10*3/uL',   'YourLocalLabName'
+--		from dual union select  '34714-6', 'DEFAULT',    'INR',                                           1, '34714-6',  'DEFAULT',   'YourLocalLabName' 
+        from dual
 
 		--Example of listing an additional code for the same lab
 		--from dual union select '2019-8', 'mmHg', 'PaCO2', 1, 'LAB:PaCO2', 'mmHg', 'Carbon dioxide partial pressure in arterial blood'
@@ -457,6 +466,7 @@ insert into fource_lab_map
 	) t;
 commit;
 
+-- TODO: add more labs
 -- Use the concept_dimension table to get an expanded list of local lab codes (optional).
 -- This will find paths corresponding to concepts already in the fource_lab_map table,
 -- and then find all the concepts corresponding to child paths. Make sure you update the
@@ -491,6 +501,9 @@ update l
 -- Lab mappings report (for debugging lab mappings)
 --------------------------------------------------------------------------------
 -- Get a list of all the codes and units in the data for 4CE labs since 1/1/2019
+WHENEVER SQLERROR CONTINUE;
+DROP TABLE fource_lab_units_facts;
+WHENEVER SQLERROR EXIT;
 create table fource_lab_units_facts (
 	fact_code varchar(50) not null,
 	fact_units varchar(50),
