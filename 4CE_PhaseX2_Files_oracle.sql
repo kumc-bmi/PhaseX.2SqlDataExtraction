@@ -425,9 +425,8 @@ alter table fource_lab_map add primary key (fource_loinc, local_lab_code, local_
 insert into fource_lab_map
 	select fource_loinc, fource_lab_units, fource_lab_name,
 		scale_factor,
-		'LOINC:' || local_lab_code,  -- Change "LOINC:" to your local LOINC code prefix (scheme)
-		local_lab_units,
-        'KUH|COMPONENT_ID:'||local_lab_name
+		'KUH|COMPONENT_ID:' || local_lab_code,  -- Change "LOINC:" to your local LOINC code prefix (scheme)
+		local_lab_units, local_lab_name
 	from (
 		select null fource_loinc, null fource_lab_units, null fource_lab_name, 
 				null scale_factor, null local_lab_code, null local_lab_units, null local_lab_name from dual
@@ -447,11 +446,11 @@ insert into fource_lab_map
         from dual union  select '2703-7',  'mmHg',       'PaO2',                                          1, '4006',    'mmHg',       'YourLocalLabName' 
 		from dual union  select '3255-7',  'mg/dL',      'Fibrinogen',                                    1, '3093',    'mg/dL',      'YourLocalLabName' 
 		from dual union  select '33959-8', 'ng/mL',      'procalcitonin',                                 1, '664',     'ng/mL',      'YourLocalLabName' 
---		from dual union  select '48065-7', 'ng/mL{FEU}', 'D-dimer (FEU)',                                 1, '48065-7', 'ng/mL{FEU}', 'YourLocalLabName' 
-		from dual union  select '48066-5', 'ng/mL{DDU}', 'D-dimer (DDU)',                                 1, '3094',    'ng/mL{DDU}', 'YourLocalLabName' 
+		from dual union  select '48065-7', 'ng/mL{FEU}', 'D-dimer (FEU)',                                 1, '3094',    'ng/mL FEU',  'YourLocalLabName' 
+--		from dual union  select '48066-5', 'ng/mL{DDU}', 'D-dimer (DDU)',                                 1, '48066-5', 'ng/mL FEU', ' YourLocalLabName' 
 		from dual union  select '49563-0', 'ng/mL',      'cardiac troponin (High Sensitivity)',           1, '2326',    'ng/mL',      'YourLocalLabName' 
         from dual union  select '49563-0', 'ng/mL',      'cardiac troponin (High Sensitivity)',           1, '2327',    'ng/mL',      'YourLocalLabName'
-		from dual union  select '6598-7',  'ug/L',       'cardiac troponin (Normal Sensitivity)',         1, '2328',     'ug/L',      'YourLocalLabName' 
+--		from dual union  select '6598-7',  'ug/L',       'cardiac troponin (Normal Sensitivity)',         1, '2328',     'ug/L',      'YourLocalLabName' 
 --		from dual union  select '5902-2',  's',          'prothrombin time (PT)',                         1, '5902-2',   's',         'YourLocalLabName' 
 		from dual union  select '6690-2',  '10*3/uL',    'white blood cell count (Leukocytes)',           1, '3009',    '10*3/uL',    'YourLocalLabName' 
 		from dual union  select '731-0',   '10*3/uL',    'lymphocyte count',                              1, '3016',    '10*3/uL',    'YourLocalLabName'
@@ -500,15 +499,34 @@ update l
 		inner join "&&crcSchema".concept_dimension c
 			on l.local_lab_code = c.concept_cd
 */
-
+--------------------------------------------------------------------------------
+-- KUMC 4ce observation_fact for lab
+--------------------------------------------------------------------------------
+set echo on;
+drop table observation_fact_lab;
+create table observation_fact_lab nologging parallel as
+select
+ENCOUNTER_NUM , PATIENT_NUM , CONCEPT_CD , PROVIDER_ID , START_DATE , MODIFIER_CD , INSTANCE_NUM , VALTYPE_CD , TVAL_CHAR ,
+NVAL_NUM , VALUEFLAG_CD , QUANTITY_NUM , labm.fource_lab_units UNITS_CD , END_DATE , LOCATION_CD , OBSERVATION_BLOB , CONFIDENCE_NUM , UPDATE_DATE ,
+DOWNLOAD_DATE , IMPORT_DATE , SOURCESYSTEM_CD , UPLOAD_ID , SUB_ENCOUNTER 
+from "&&crcSchema".observation_fact f
+join fource_lab_map labm
+    on  f.concept_cd = labm.local_lab_code
+    and lower(f.units_cd) = lower(labm.local_lab_units);
 --------------------------------------------------------------------------------
 -- Lab mappings report (for debugging lab mappings)
 --------------------------------------------------------------------------------
+/*
+for testing this section
+
+select * from fource_lab_map;
+*/
 -- Get a list of all the codes and units in the data for 4CE labs since 1/1/2019
 WHENEVER SQLERROR CONTINUE;
 DROP TABLE fource_lab_units_facts;
 drop index fource_lap_map_ndx;
 WHENEVER SQLERROR EXIT;
+
 create table fource_lab_units_facts (
 	fact_code varchar(50) not null,
 	fact_units varchar(50),
@@ -516,6 +534,9 @@ create table fource_lab_units_facts (
 	mean_value numeric(18,5),
 	stdev_value numeric(18,5)
 ); 
+
+--188s
+create index fource_lap_map_ndx on fource_lab_map(local_lab_code);
 
 insert into fource_lab_units_facts
 select * from (
@@ -530,8 +551,52 @@ from labs_in_period
 group by concept_cd, units_cd);
 commit;
 
---188s
-create index fource_lap_map_ndx on fource_lab_map(local_lab_code);
+-------------------------------------------------------------------------------------------------------------------------------
+--- KUMC specific
+/*
+-- TODO: Create observation_fact_lab which has all KUH|COMPONENT_ID map to LOINC and in a single unit.
+1. create observation_fact_lab with needed loinc and component
+2. create LOINC & LOINC_UNIT to COMPONENET & COMPONENET_UNIT
+
+
+with loinc_units_local_lab_units as (
+    select m.fource_loinc, m.fource_lab_units, u.*
+    from fource_lab_units_facts u
+    join fource_lab_map m
+        on u.fact_code = m.local_lab_code
+    where u.num_facts >= 100
+    order by m.fource_loinc, u.fact_code, u.num_facts DESC, u.fact_units
+)
+, same_units as (
+    select * from loinc_units_local_lab_units
+    where upper(fource_lab_units)=upper(fact_units)
+)
+, not_a_single_match_unit as (
+    select distinct fource_loinc from fource_lab_map where fource_loinc not in (select distinct fource_loinc  from same_units)
+)
+select * from observation_fact_lab fl
+;
+*/
+-------------------------------------------------------------------------------------------------------------------------------
+
+create table observation_fact_lab
+nologging parallel
+as
+select *
+from "&&crcSchema".observation_fact f
+where concept_cd in ( 
+    select fource_loinc from fource_lab_map
+    union
+    select local_lab_code from fource_lab_map
+)
+;
+
+select *
+from observation_fact_lab;
+
+-------------------------------------------------------------------------------------------------------------------------------
+-- END KUMC Specific
+-------------------------------------------------------------------------------------------------------------------------------
 
 
 --select * from fource_lab_units_facts;
