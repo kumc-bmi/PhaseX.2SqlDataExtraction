@@ -446,7 +446,7 @@ insert into fource_lab_map
         from dual union  select '2703-7',  'mmHg',       'PaO2',                                          1, '4006',    'mmHg',       'YourLocalLabName' 
 		from dual union  select '3255-7',  'mg/dL',      'Fibrinogen',                                    1, '3093',    'mg/dL',      'YourLocalLabName' 
 		from dual union  select '33959-8', 'ng/mL',      'procalcitonin',                                 1, '664',     'ng/mL',      'YourLocalLabName' 
-		from dual union  select '48065-7', 'ng/mL{FEU}', 'D-dimer (FEU)',                                 1, '3094',    'ng/mL FEU',  'YourLocalLabName' 
+		from dual union  select '48065-7', 'ng/mL{FEU}', 'D-dimer (FEU)',                                 1, '3094',    'ng/mL{FEU}',  'YourLocalLabName' --ng/mL FEU is changed to ng/mL{FEU} when creating observation_fact_lab from observation_fact
 --		from dual union  select '48066-5', 'ng/mL{DDU}', 'D-dimer (DDU)',                                 1, '48066-5', 'ng/mL FEU', ' YourLocalLabName' 
 		from dual union  select '49563-0', 'ng/mL',      'cardiac troponin (High Sensitivity)',           1, '2326',    'ng/mL',      'YourLocalLabName' 
         from dual union  select '49563-0', 'ng/mL',      'cardiac troponin (High Sensitivity)',           1, '2327',    'ng/mL',      'YourLocalLabName'
@@ -506,13 +506,28 @@ drop table observation_fact_lab;
 create table observation_fact_lab nologging parallel as
 select
 ENCOUNTER_NUM , PATIENT_NUM , CONCEPT_CD , PROVIDER_ID , START_DATE , MODIFIER_CD , INSTANCE_NUM , VALTYPE_CD , TVAL_CHAR ,
-NVAL_NUM , VALUEFLAG_CD , QUANTITY_NUM , labm.fource_lab_units UNITS_CD , END_DATE , LOCATION_CD , OBSERVATION_BLOB , CONFIDENCE_NUM , UPDATE_DATE ,
+NVAL_NUM , VALUEFLAG_CD , QUANTITY_NUM , labm.fource_lab_units UNITS_CD , END_DATE , LOCATION_CD , CONFIDENCE_NUM , UPDATE_DATE ,
 DOWNLOAD_DATE , IMPORT_DATE , SOURCESYSTEM_CD , UPLOAD_ID , SUB_ENCOUNTER 
 from "&&crcSchema".observation_fact f
 join fource_lab_map labm
     on  f.concept_cd = labm.local_lab_code
-    and lower(f.units_cd) = lower(labm.local_lab_units);
+    and lower(f.units_cd) = lower(labm.local_lab_units)
+and f.concept_cd not in ( 'KUH|COMPONENT_ID:3094' )
+union
+select
+ENCOUNTER_NUM , PATIENT_NUM , CONCEPT_CD , PROVIDER_ID , START_DATE , MODIFIER_CD , INSTANCE_NUM , VALTYPE_CD , TVAL_CHAR ,
+NVAL_NUM , VALUEFLAG_CD , QUANTITY_NUM ,          'ng/mL{FEU}' UNITS_CD , END_DATE , LOCATION_CD ,  CONFIDENCE_NUM , UPDATE_DATE ,
+DOWNLOAD_DATE , IMPORT_DATE , SOURCESYSTEM_CD , UPLOAD_ID , SUB_ENCOUNTER 
+from "&&crcSchema".observation_fact f
+where  f.concept_cd = 'KUH|COMPONENT_ID:3094'  and lower(f.units_cd) = 'ng/ml feu';
 
+
+select
+concept_cd,units_cd, count(*) 
+from observation_fact_lab
+where concept_cd in ( 'KUH|COMPONENT_ID:3094' )
+group by  concept_cd,units_cd
+;
 /*
 -- TODO: Create observation_fact_lab which has ALL KUH|COMPONENT_ID map to LOINC and in a single unit. not just where units are matched like in above sql
 1. create observation_fact_lab with needed loinc and component
@@ -537,9 +552,9 @@ with loinc_units_local_lab_units as (
 select * from observation_fact_lab fl
 ;
 */
--------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- END KUMC Specific
--------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- Lab mappings report (for debugging lab mappings)
@@ -553,6 +568,7 @@ select * from fource_lab_map;
 WHENEVER SQLERROR CONTINUE;
 DROP TABLE fource_lab_units_facts;
 drop index fource_lap_map_ndx;
+drop table fource_lab_map_report;
 WHENEVER SQLERROR EXIT;
 
 create table fource_lab_units_facts (
