@@ -685,7 +685,10 @@ select * from fource_lab_map_report order by fource_loinc, num_facts desc
 -- * The ATC and RxNorm codes represent the same list of medications.
 -- * Use ATC and/or RxNorm, depending on what your institution uses.
 --------------------------------------------------------------------------------
---drop table fource_med_map;
+WHENEVER SQLERROR CONTINUE;
+drop table fource_med_map;
+WHENEVER SQLERROR EXIT;
+
 create table fource_med_map (
 	med_class varchar(50) not null,
 	code_type varchar(10) not null,
@@ -695,60 +698,60 @@ create table fource_med_map (
 alter table fource_med_map add primary key (med_class, code_type, local_med_code);
 
 -- ATC codes (optional)
-insert into fource_med_map
-	select m, 'ATC' t, 'ATC:' || c  -- Change "ATC:" to your local ATC code prefix (scheme)
-	from (
-		-- Don't add or remove drugs
-		select 'ACEI' m, c from (select 'C09AA01' c from dual union select 'C09AA02' from dual union select 'C09AA03' from dual 
-            union select 'C09AA04' from dual union select 'C09AA05' from dual union select 'C09AA06' from dual union select 'C09AA07' from dual 
-            union select 'C09AA08' from dual union select 'C09AA09' from dual union select 'C09AA10' from dual union select 'C09AA11' from dual 
-            union select 'C09AA13' from dual union select 'C09AA15' from dual union select 'C09AA16' from dual) t
-		union 
-        select 'ARB', c from (select 'C09CA01' c from dual union select 'C09CA02' from dual union select 'C09CA03' from dual 
-            union select 'C09CA04' from dual union select 'C09CA06' from dual union select 'C09CA07' from dual 
-            union select 'C09CA08' from dual) t
-		union 
-        select 'COAGA', c from (select 'B01AC04' c from dual union select 'B01AC05' from dual union select 'B01AC07' from dual 
-            union select 'B01AC10' from dual union select 'B01AC13' from dual union select 'B01AC16' from dual 
-            union select 'B01AC17' from dual union select 'B01AC22' from dual union select 'B01AC24' from dual 
-            union select 'B01AC25' from dual union select 'B01AC26' from dual) t
-		union 
-        select 'COAGB', c from (select 'B01AA01' c from dual union select 'B01AA03' from dual 
-            union select 'B01AA04' from dual union select 'B01AA07' from dual 
-            union select 'B01AA11' from dual union select 'B01AB01' from dual 
-            union select 'B01AB04' from dual union select 'B01AB05' from dual 
-            union select 'B01AB06' from dual union select 'B01AB07' from dual 
-            union select 'B01AB08' from dual union select 'B01AB10' from dual 
-            union select 'B01AB12' from dual union select 'B01AE01' from dual 
-            union select 'B01AE02' from dual union select 'B01AE03' from dual 
-            union select 'B01AE06' from dual union select 'B01AE07' from dual 
-            union select 'B01AF01' from dual union select 'B01AF02' from dual 
-            union select 'B01AF03' from dual union select 'B01AF04' from dual 
-            union select 'B01AX05' from dual union select 'B01AX07' from dual) t
-		union 
-        select 'COVIDVIRAL', c from (select 'J05AE10' c from dual union select 'J05AP01' from dual union select 'J05AR10' from dual) t
-		union 
-        select 'DIURETIC', c from (select 'C03CA01' c from dual union select 'C03CA02' from dual 
-            union select 'C03CA03' from dual union select 'C03CA04' from dual 
-            union select 'C03CB01' from dual union select 'C03CB02' from dual union select 'C03CC01' from dual) t
-        union 
-        select 'HCQ', c from (select 'P01BA01' c from dual union select 'P01BA02' from dual) t
-		union 
-        select 'ILI', c from (select 'L04AC03' c from dual union select 'L04AC07' from dual 
-            union select 'L04AC11' from dual union select 'L04AC14' from dual) t
-		union 
-        select 'INTERFERON', c from (select 'L03AB08' c from dual union select 'L03AB11' from dual) t
-		union 
-        select 'SIANES', c from (select 'M03AC03' c from dual union select 'M03AC09' from dual 
-            union select 'M03AC11' from dual union select 'N01AX03' from dual 
-            union select 'N01AX10' from dual union select 'N05CD08' from dual union select 'N05CM18' from dual) t
-		union 
-        select 'SICARDIAC', c from (select 'B01AC09' c from dual union select 'C01CA03' from dual 
-            union select 'C01CA04' from dual union select 'C01CA06' from dual union select 'C01CA07' from dual 
-            union select 'C01CA24' from dual union select 'C01CE02' from dual union select 'C01CX09' from dual 
-            union select 'H01BA01' from dual union select 'R07AX01' from dual) t
-	) t;
-commit;
+--insert into fource_med_map
+--	select m, 'ATC' t, 'ATC:' || c  -- Change "ATC:" to your local ATC code prefix (scheme)
+--	from (
+--		-- Don't add or remove drugs
+--		select 'ACEI' m, c from (select 'C09AA01' c from dual union select 'C09AA02' from dual union select 'C09AA03' from dual 
+--            union select 'C09AA04' from dual union select 'C09AA05' from dual union select 'C09AA06' from dual union select 'C09AA07' from dual 
+--            union select 'C09AA08' from dual union select 'C09AA09' from dual union select 'C09AA10' from dual union select 'C09AA11' from dual 
+--            union select 'C09AA13' from dual union select 'C09AA15' from dual union select 'C09AA16' from dual) t
+--		union 
+--        select 'ARB', c from (select 'C09CA01' c from dual union select 'C09CA02' from dual union select 'C09CA03' from dual 
+--            union select 'C09CA04' from dual union select 'C09CA06' from dual union select 'C09CA07' from dual 
+--            union select 'C09CA08' from dual) t
+--		union 
+--        select 'COAGA', c from (select 'B01AC04' c from dual union select 'B01AC05' from dual union select 'B01AC07' from dual 
+--            union select 'B01AC10' from dual union select 'B01AC13' from dual union select 'B01AC16' from dual 
+--            union select 'B01AC17' from dual union select 'B01AC22' from dual union select 'B01AC24' from dual 
+--            union select 'B01AC25' from dual union select 'B01AC26' from dual) t
+--		union 
+--        select 'COAGB', c from (select 'B01AA01' c from dual union select 'B01AA03' from dual 
+--            union select 'B01AA04' from dual union select 'B01AA07' from dual 
+--            union select 'B01AA11' from dual union select 'B01AB01' from dual 
+--            union select 'B01AB04' from dual union select 'B01AB05' from dual 
+--            union select 'B01AB06' from dual union select 'B01AB07' from dual 
+--            union select 'B01AB08' from dual union select 'B01AB10' from dual 
+--            union select 'B01AB12' from dual union select 'B01AE01' from dual 
+--            union select 'B01AE02' from dual union select 'B01AE03' from dual 
+--            union select 'B01AE06' from dual union select 'B01AE07' from dual 
+--            union select 'B01AF01' from dual union select 'B01AF02' from dual 
+--            union select 'B01AF03' from dual union select 'B01AF04' from dual 
+--            union select 'B01AX05' from dual union select 'B01AX07' from dual) t
+--		union 
+--        select 'COVIDVIRAL', c from (select 'J05AE10' c from dual union select 'J05AP01' from dual union select 'J05AR10' from dual) t
+--		union 
+--        select 'DIURETIC', c from (select 'C03CA01' c from dual union select 'C03CA02' from dual 
+--            union select 'C03CA03' from dual union select 'C03CA04' from dual 
+--            union select 'C03CB01' from dual union select 'C03CB02' from dual union select 'C03CC01' from dual) t
+--        union 
+--        select 'HCQ', c from (select 'P01BA01' c from dual union select 'P01BA02' from dual) t
+--		union 
+--        select 'ILI', c from (select 'L04AC03' c from dual union select 'L04AC07' from dual 
+--            union select 'L04AC11' from dual union select 'L04AC14' from dual) t
+--		union 
+--        select 'INTERFERON', c from (select 'L03AB08' c from dual union select 'L03AB11' from dual) t
+--		union 
+--        select 'SIANES', c from (select 'M03AC03' c from dual union select 'M03AC09' from dual 
+--            union select 'M03AC11' from dual union select 'N01AX03' from dual 
+--            union select 'N01AX10' from dual union select 'N05CD08' from dual union select 'N05CM18' from dual) t
+--		union 
+--        select 'SICARDIAC', c from (select 'B01AC09' c from dual union select 'C01CA03' from dual 
+--            union select 'C01CA04' from dual union select 'C01CA06' from dual union select 'C01CA07' from dual 
+--            union select 'C01CA24' from dual union select 'C01CE02' from dual union select 'C01CX09' from dual 
+--            union select 'H01BA01' from dual union select 'R07AX01' from dual) t
+--	) t;
+--commit;
 
 -- RxNorm codes (optional)
 insert into fource_med_map
@@ -2076,12 +2079,13 @@ union select 'SICARDIAC' m, c from
 	union select '891438' from dual) t
 	) t;
 commit;
+-- TODO: Bring Remdesivir to HERON as they are not brought to heron from clairty.
 -- Remdesivir defined separately since many sites will have custom codes (optional)
-insert into fource_med_map
-	select 'REMDESIVIR', 'RxNorm', 'RxNorm:2284718' from dual
-	union select 'REMDESIVIR', 'RxNorm', 'RxNorm:2284960' from dual
-	union select 'REMDESIVIR', 'Custom', 'ACT|LOCAL:REMDESIVIR' from dual;
-commit;
+--insert into fource_med_map
+--	select 'REMDESIVIR', 'RxNorm', 'RxNorm:2284718' from dual
+--	union select 'REMDESIVIR', 'RxNorm', 'RxNorm:2284960' from dual
+--	union select 'REMDESIVIR', 'Custom', 'ACT|LOCAL:REMDESIVIR' from dual;
+--commit;
 -- Use the concept_dimension to get an expanded list of medication codes (optional)
 -- This will find paths corresponding to concepts already in the fource_med_map table,
 -- and then find all the concepts corresponding to child paths.
@@ -2107,6 +2111,52 @@ select concept_path, concept_cd
 		where t.med_class = m.med_class and t.local_med_code = d.concept_cd
 	)
 */
+--------------------------------------------------------------------------------
+-- KUMC specific get childs(med_id?) on rxnorm
+--------------------------------------------------------------------------------
+--get path of rxnorm's childeren
+drop table fource_med_map_childs_code;
+drop table fource_med_map_childs;
+create table fource_med_map_childs_code nologging parallel as
+with rxnorm_children_concept_path as (
+    select concept_cd rxnorm,concept_path from nightherondata.concept_dimension
+    where concept_cd in (select local_med_code from fource_med_map)
+)
+select 
+distinct --get concept_cd, med_class and code_type of rxnorm's childeren
+rx_ch.rxnorm,
+cdim.concept_cd rxnorm_child_concept_cd
+from nightherondata.concept_dimension cdim
+join rxnorm_children_concept_path rx_ch
+    on cdim.concept_path like rx_ch.concept_path || '%'
+;
+
+
+create table fource_med_map_childs nologging parallel as
+select 
+distinct
+fmm.med_class,
+fmm.code_type,
+fmmcc.rxnorm_child_concept_cd
+from fource_med_map_childs_code fmmcc
+join fource_med_map fmm
+    on fmm.local_med_code=fmmcc.rxnorm
+;
+
+--get med_class and code_type of rxnorm's childeren
+insert /*+ APPEND */ into fource_med_map
+select *
+from fource_med_map_childs m
+where not exists (
+    select *
+    from fource_med_map t
+    where t.med_class = m.med_class and t.local_med_code = m.rxnorm_child_concept_cd
+)
+;
+commit;
+--------------------------------------------------------------------------------
+-- END KUMC specific get childs(med_id?) on rxnorm
+--------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- Procedure mappings
