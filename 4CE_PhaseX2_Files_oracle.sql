@@ -500,9 +500,8 @@ update l
 			on l.local_lab_code = c.concept_cd
 */
 --------------------------------------------------------------------------------
--- KUMC 4ce observation_fact for lab
+-- KUMC specific: 4ce observation_fact for lab
 --------------------------------------------------------------------------------
-set echo on;
 drop table observation_fact_lab;
 create table observation_fact_lab nologging parallel as
 select
@@ -513,6 +512,35 @@ from "&&crcSchema".observation_fact f
 join fource_lab_map labm
     on  f.concept_cd = labm.local_lab_code
     and lower(f.units_cd) = lower(labm.local_lab_units);
+
+/*
+-- TODO: Create observation_fact_lab which has ALL KUH|COMPONENT_ID map to LOINC and in a single unit. not just where units are matched like in above sql
+1. create observation_fact_lab with needed loinc and component
+2. create LOINC & LOINC_UNIT to COMPONENET & COMPONENET_UNIT
+
+
+with loinc_units_local_lab_units as (
+    select m.fource_loinc, m.fource_lab_units, u.*
+    from fource_lab_units_facts u
+    join fource_lab_map m
+        on u.fact_code = m.local_lab_code
+    where u.num_facts >= 100
+    order by m.fource_loinc, u.fact_code, u.num_facts DESC, u.fact_units
+)
+, same_units as (
+    select * from loinc_units_local_lab_units
+    where upper(fource_lab_units)=upper(fact_units)
+)
+, not_a_single_match_unit as (
+    select distinct fource_loinc from fource_lab_map where fource_loinc not in (select distinct fource_loinc  from same_units)
+)
+select * from observation_fact_lab fl
+;
+*/
+-------------------------------------------------------------------------------------------------------------------------------
+-- END KUMC Specific
+-------------------------------------------------------------------------------------------------------------------------------
+
 --------------------------------------------------------------------------------
 -- Lab mappings report (for debugging lab mappings)
 --------------------------------------------------------------------------------
@@ -538,11 +566,11 @@ create table fource_lab_units_facts (
 --188s
 create index fource_lap_map_ndx on fource_lab_map(local_lab_code);
 
-insert into fource_lab_units_facts
+insert /*+ APPEND */ into fource_lab_units_facts
 select * from (
 with labs_in_period as (
 select concept_cd, units_cd, nval_num
-	from "&&crcSchema".observation_fact f
+	from observation_fact_lab f
     join fource_lab_map m  on m.local_lab_code = f.concept_cd 
 	where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 )
@@ -551,52 +579,22 @@ from labs_in_period
 group by concept_cd, units_cd);
 commit;
 
--------------------------------------------------------------------------------------------------------------------------------
---- KUMC specific
-/*
--- TODO: Create observation_fact_lab which has all KUH|COMPONENT_ID map to LOINC and in a single unit.
-1. create observation_fact_lab with needed loinc and component
-2. create LOINC & LOINC_UNIT to COMPONENET & COMPONENET_UNIT
+-- stop running further if one lab has more than 1 unit.
+with labs_with_gt1_units as
+(
+select fact_code, fact_units
+from fource_lab_units_facts
+group by fact_code, fact_units
+having count(*)>1
+)
+select 
+case 
+    when count(*) = 0 then 0 
+    else 1/0 --one lab has more than 1 units
+END any_lab_has_more_than_1_units
 
-
-with loinc_units_local_lab_units as (
-    select m.fource_loinc, m.fource_lab_units, u.*
-    from fource_lab_units_facts u
-    join fource_lab_map m
-        on u.fact_code = m.local_lab_code
-    where u.num_facts >= 100
-    order by m.fource_loinc, u.fact_code, u.num_facts DESC, u.fact_units
-)
-, same_units as (
-    select * from loinc_units_local_lab_units
-    where upper(fource_lab_units)=upper(fact_units)
-)
-, not_a_single_match_unit as (
-    select distinct fource_loinc from fource_lab_map where fource_loinc not in (select distinct fource_loinc  from same_units)
-)
-select * from observation_fact_lab fl
+from labs_with_gt1_units
 ;
-*/
--------------------------------------------------------------------------------------------------------------------------------
-
-create table observation_fact_lab
-nologging parallel
-as
-select *
-from "&&crcSchema".observation_fact f
-where concept_cd in ( 
-    select fource_loinc from fource_lab_map
-    union
-    select local_lab_code from fource_lab_map
-)
-;
-
-select *
-from observation_fact_lab;
-
--------------------------------------------------------------------------------------------------------------------------------
--- END KUMC Specific
--------------------------------------------------------------------------------------------------------------------------------
 
 
 --select * from fource_lab_units_facts;
