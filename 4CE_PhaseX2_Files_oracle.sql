@@ -687,6 +687,8 @@ select * from fource_lab_map_report order by fource_loinc, num_facts desc
 --------------------------------------------------------------------------------
 WHENEVER SQLERROR CONTINUE;
 drop table fource_med_map;
+drop table fource_med_map_childs_code;
+drop table fource_med_map_childs;
 WHENEVER SQLERROR EXIT;
 
 create table fource_med_map (
@@ -2115,8 +2117,6 @@ select concept_path, concept_cd
 -- KUMC specific get childs(med_id?) on rxnorm
 --------------------------------------------------------------------------------
 --get path of rxnorm's childeren
-drop table fource_med_map_childs_code;
-drop table fource_med_map_childs;
 create table fource_med_map_childs_code nologging parallel as
 with rxnorm_children_concept_path as (
     select concept_cd rxnorm,concept_path from nightherondata.concept_dimension
@@ -2162,6 +2162,10 @@ commit;
 -- Procedure mappings
 -- * Do not change the proc_group or add additional procedures.
 --------------------------------------------------------------------------------
+WHENEVER SQLERROR CONTINUE;
+drop table fource_proc_map;
+WHENEVER SQLERROR EXIT;
+
 create table fource_proc_map (
 	proc_group varchar(50) not null,
 	code_type varchar(10) not null,
@@ -2171,7 +2175,7 @@ alter table fource_proc_map add primary key (proc_group, code_type, local_proc_c
 
 -- CPT4 (United States)
 insert into fource_proc_map
-	select p, 'CPT4', 'CPT4:' || c  -- Change "CPT4:" to your local RxNorm code prefix (scheme)
+	select p, 'CPT4', 'CPT:' || c  -- Change "CPT4:" to your local RxNorm code prefix (scheme)
 	from (
 		select '' p, '' c from dual where 1=0
 		union all select 'EmergencyGeneralSurgery', c from (select '44970' c from dual union select '47562' from dual 
@@ -2200,6 +2204,7 @@ insert into fource_proc_map
             union select '91301' from dual union select '91302' from dual union select '91303' from dual) t
 	) t;
 commit;
+/*
 -- CCAM (France)
 insert into fource_proc_map
 	select p, 'CCAM', 'CCAM:' || c  -- Change "CCAM:" to your local RxNorm code prefix (scheme)
@@ -2330,10 +2335,10 @@ insert into fource_proc_map
             union select '40202445' from dual) t
 		union all select 'Bronchoscopy', c from (select '40201058' c from dual) t
 	) t;
-
+*/
 -- ICD9Proc
 insert into fource_proc_map
-	select p, 'ICD9', 'ICD9PROC:' || c  -- Change "ICD9:" to your local RxNorm code prefix (scheme)
+	select p, 'ICD9', 'ICD9:' || c  -- Change "ICD9:" to your local RxNorm code prefix (scheme)
 	from (
 		select '' p, '' c from dual where 1=0
 		union all select 'EmergencyGeneralSurgery', c from (select '47.01' c from dual union select '51.23' from dual 
@@ -2357,7 +2362,7 @@ insert into fource_proc_map
 commit;
 -- ICD10-PCS
 insert into fource_proc_map
-	select p, 'ICD10', 'ICD10PCS:' || c  -- Change "ICD10:" to your local RxNorm code prefix (scheme)
+	select p, 'ICD10', 'ICD10:' || c  -- Change "ICD10:" to your local RxNorm code prefix (scheme)
 	from (
 		select '' p, '' c  from dual where 1=0
 		union all select 'EmergencyGeneralSurgery', c from (select '0DBJ4ZZ' c from dual union select '0DTJ4ZZ' from dual 
@@ -2373,6 +2378,7 @@ insert into fource_proc_map
 		union all select 'CTChest', c from (select 'BW24' c from dual union select 'BW24Y0Z' from dual union select 'BW24YZZ' from dual) t
 	) t;
 commit;
+/*
 -- SNOMED
 insert into fource_proc_map
 	select p, 'SNOMED', 'SNOMED:' || c  -- Change "SNOMED:" to your local RxNorm code prefix (scheme)
@@ -2401,6 +2407,7 @@ insert into fource_proc_map
 		union all select 'Bronchoscopy', c from (select '10847001' c from dual union select '68187007' from dual) t
 	) t;
 commit;
+*/
 -- Use the concept_dimension to get an expanded list of medication codes (optional)
 -- This will find paths corresponding to concepts already in the fource_med_map table,
 -- and then find all the concepts corresponding to child paths.
@@ -2428,11 +2435,43 @@ select concept_path, concept_cd
 */
 
 --------------------------------------------------------------------------------
+-- start KUMC specific get childs for  proc
+--------------------------------------------------------------------------------
+select substr(concept_cd,1,instr(concept_cd,':')-1), count(*)
+from  nightherondata.CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\C4\%'
+group by substr(concept_cd,1,instr(concept_cd,':')-1)
+union all
+select substr(concept_cd,1,instr(concept_cd,':')-1), count(*)
+from  nightherondata.CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\10\%'
+group by substr(concept_cd,1,instr(concept_cd,':')-1)
+union all
+select substr(concept_cd,1,instr(concept_cd,':')-1), count(*)
+from  nightherondata.CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\09\%'
+group by substr(concept_cd,1,instr(concept_cd,':')-1)
+;
+/*
+CPT	13551
+ICD10	178189
+ICD9	4664
+*/
+--now 4ce local_proc_code matches to HERON
+select distinct substr(local_proc_code,1,instr(local_proc_code,':')-1) code from fource_proc_map order by code;
+/*
+CPT
+ICD10
+ICD9
+*/
+--------------------------------------------------------------------------------
+-- END KUMC specific get childs for  proc
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- Multisystem Inflammatory Syndrome in Children (MIS-C) (optional)
 -- * Write a custom query to populate this table with the patient_num's of
 -- * children who develop MIS-C and their first MIS-C diagnosis date.
 --------------------------------------------------------------------------------
+WHENEVER SQLERROR CONTINUE;
 drop table fource_misc;
+WHENEVER SQLERROR EXIT;
 create table fource_misc (
 	patient_num int not null,
 	misc_date date not null
@@ -2452,6 +2491,9 @@ commit;
 -- * Modify this table only if you are working on a specific project that
 -- * has defined custom patient cohorts to analyze.
 --------------------------------------------------------------------------------
+WHENEVER SQLERROR CONTINUE;
+drop table fource_cohort_config;
+WHENEVER SQLERROR EXIT;
 create table fource_cohort_config (
 	cohort varchar(50) not null,
 	include_in_phase1 int, -- 1 = include the cohort in the phase 1 output, otherwise 0
@@ -2478,6 +2520,10 @@ update fource_cohort_config
 	set source_data_updated_date = nvl((select source_data_updated_date from fource_config),sysdate)
 	where source_data_updated_date is null;
 commit;
+
+WHENEVER SQLERROR CONTINUE;
+drop table fource_covid_tests;
+WHENEVER SQLERROR EXIT;
 
 --##############################################################################
 --##############################################################################
