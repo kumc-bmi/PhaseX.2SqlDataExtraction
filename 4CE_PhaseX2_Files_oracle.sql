@@ -126,6 +126,8 @@ set echo on;
 --------------------------------------------------------------------------------
 WHENEVER SQLERROR CONTINUE;
 drop table fource_config; -- make sure everything is clean
+drop table fource_code_map;
+drop table fource_icu_location;
 WHENEVER SQLERROR EXIT;
 create table fource_config (
 	siteid varchar(20), -- Up to 20 letters or numbers, must start with letter, no spaces or special characters.
@@ -203,7 +205,7 @@ commit;
 -- * Repeat a code multiple times if you have more than one local code.
 -- * Comment out rows that are not applicable to your database.
 --------------------------------------------------------------------------------
-drop table fource_code_map;
+--drop table fource_code_map;
 create table fource_code_map (
 	code varchar(50) not null,
 	local_code varchar(50) not null
@@ -229,6 +231,7 @@ insert into fource_code_map
     
     -- select CONCEPT_CD from  "&&crcSchema".concept_dimension   where CONCEPT_PATH LIKE '\i2b2\Visit Details\ENC_TYPE\IP\%';
     union  all select 'inpatient_concept_cd', 'KUH|HOSP_ADT_CLASS:101' from dual
+    union  all select 'inpatient_concept_cd', 'ENC_TYPE:ICU_STAY' from dual
 ;
 commit;
 
@@ -244,7 +247,7 @@ insert into fource_code_map
 	-- union  all select 'icu_location_cd', 'ICU' from dual
     
 	-- ICU visits (from the observation_fact.concept_cd field)
-       union  all select 'inpatient_concept_cd', 'ENC_TYPE:ICU_STAY' from dual
+       union  all select 'icu_concept_cd', 'ENC_TYPE:ICU_STAY' from dual                -- select CONCEPT_CD from  nightherondata.concept_dimension   where CONCEPT_PATH LIKE '\i2b2\Visit Details\ENC_TYPE\IP\ICU\%'; --ENC_TYPE:ICU_STAY
 	-- union  all select 'icu_concept_cd', 'UMLS:C1547136' from dual-- from ACT ontology
    	-- union  all select 'icu_concept_cd', 'CPT4:99291' from dual-- from ACT ontology
 	--union  all select 'icu_concept_cd', 'CPT4:99292' from dual-- from ACT ontology
@@ -256,16 +259,14 @@ insert into fource_code_map
 --select * from fource_code_map;
 commit;
 
-
 -- If you use location_cd to map ICU  locations you can create a list here or load from an external mapping table
 --drop table fource_icu_location;
 --create table fource_icu_location as select cast(department_id as varchar2(50)) location_cd from icus;
---create table fource_icu_location as 
---select cast('icu1' as varchar2(50)) as location_cd from dual
---union
---select cast('icu1' as varchar2(50)) as location_cd from dual;
+create table fource_icu_location as 
+select cast('icu1' as varchar2(50)) as location_cd from dual where 1=0
+union
+select cast('icu1' as varchar2(50)) as location_cd from dual where 1=0;
 --commit;
-
 -- Sex codes
 -- select distinct sex_cd from "&&crcSchema".patient_dimension;
 -- m, f, u, @
@@ -2469,6 +2470,7 @@ ICD9
 -- * Write a custom query to populate this table with the patient_num's of
 -- * children who develop MIS-C and their first MIS-C diagnosis date.
 --------------------------------------------------------------------------------
+-- TODO by LP: participate in MISC
 WHENEVER SQLERROR CONTINUE;
 drop table fource_misc;
 WHENEVER SQLERROR EXIT;
@@ -2523,6 +2525,8 @@ commit;
 
 WHENEVER SQLERROR CONTINUE;
 drop table fource_covid_tests;
+drop table fource_admissions;
+drop table fource_icu;
 WHENEVER SQLERROR EXIT;
 
 --##############################################################################
@@ -2573,7 +2577,7 @@ create table fource_admissions (
 
 alter table fource_admissions add primary key (patient_num, admission_date, discharge_date);
 insert into fource_admissions
-	select distinct patient_num, cast(start_date as date), nvl(cast(end_date as date),'01-JAN-2199') -- a very future date for missing discharge dates
+	select distinct patient_num, cast(start_date as date), nvl(cast(end_date as date),to_date('2199-01-01 00:00:00')) -- a very future date for missing discharge dates
 	from (
 		-- Select by inout_cd
 		select patient_num, trunc(start_date) start_date, trunc(end_date) end_date
@@ -2608,6 +2612,7 @@ commit;
 --select 'Number of admissions with discharge before admission: ' || count(*) from fource_admissions where discharge_date < admission_date;
 
 delete from fource_admissions where discharge_date < admission_date;
+commit;
 
 --------------------------------------------------------------------------------
 -- Create a list of dates where patients were in the ICU.
@@ -2621,7 +2626,7 @@ create table fource_icu (
 alter table fource_icu add primary key (patient_num, start_date, end_date);
 --truncate table fource_icu;
 insert into fource_icu
-		select distinct patient_num, cast(start_date as date), nvl(cast(end_date as date), '01-JAN-2199') -- a very future date for missing end dates
+		select distinct patient_num, cast(start_date as date), nvl(cast(end_date as date), to_date('2199-01-01 00:00:00')) -- a very future date for missing end dates
 		from (
 			-- Select by patient_dimension inout_cd
 			select patient_num, trunc(start_date) start_date, trunc(end_date) end_date
