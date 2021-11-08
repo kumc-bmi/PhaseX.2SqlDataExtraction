@@ -3079,7 +3079,7 @@ insert into fource_observations (cohort, patient_num, severe, concept_type, conc
 			on f.patient_num=p.patient_num 
 				--and cast(trunc(f.start_date) as date) between dateadd(dd,@lookback_days,p.admission_date) and p.source_data_updated_date
                 and trunc(f.start_date) between trunc(p.admission_date)-365 and trunc(p.source_data_updated_date)
-	where f.concept_cd like (select code_prefix_icd10cm || '%' from fource_config where rownum = 1);-- and code_prefix_icd10cm <>'';
+	where f.concept_cd like (select code_prefix_icd10cm || '%' from fource_config where rownum = 1);-- and code_prefix_icd10cm <>''
 commit;
 --select count(distinct patient_num) from fource_observations; --293601
 --------------------------------------------------------------------------------
