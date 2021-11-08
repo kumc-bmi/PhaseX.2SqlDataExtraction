@@ -3457,7 +3457,7 @@ commit;
 --select * from fource_LocalPatientSummary;
 
 -- Update sex if sex stored in observation_fact table
-merge into fource_LocalPatientSummary s
+merge /*+ APPEND */ into fource_LocalPatientSummary s
 using (select p.sex, p.patient_num
 	   from fource_LocalPatientSummary s
 		inner join (
