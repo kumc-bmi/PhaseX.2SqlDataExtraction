@@ -2,9 +2,11 @@
 variables from make file
 "&&crcSchema" = NIGHTHERONDATA
 "&&source_data_updated_date" =  '2021-10-10 00:00:00' 
-
 */
-
+define crcSchema=&1
+define source_data_updated_date='&2'
+-- define source_data_updated_date_p2=&3
+-- define source_data_updated_dat= source_data_updated_date_p1 + source_data_updated_date_p2
 --##############################################################################
 --##############################################################################
 --### 4CE Phase 1.2 and 2.2
@@ -132,12 +134,12 @@ set echo on;
 -- General settings
 --------------------------------------------------------------------------------
 WHENEVER SQLERROR CONTINUE;
-drop table fource_config; -- make sure everything is clean
+drop table fource_config ;
 drop table fource_code_map;
 drop table fource_icu_location;
 drop table icd_map;
 drop table observation_fact_icd10;
-WHENEVER SQLERROR EXIT;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 create table fource_config (
 	siteid varchar(20), -- Up to 20 letters or numbers, must start with letter, no spaces or special characters.
 	race_data_available int, -- 1 if your site collects race/ethnicity data; 0 if your site does not collect this.
@@ -167,7 +169,7 @@ create table fource_config (
     --blackout_days_before -7 blackout_days_before 14 add these later
 );
 commit;
-
+alter session set nls_date_format = 'YYYY-MM-DD HH24:MI:SS'
 --truncate table fource_config;
 insert into fource_config
 	select 'KUMC', -- siteid
@@ -176,7 +178,7 @@ insert into fource_config
 		1, -- death_data_available
 		'ICD9:', -- code_prefix_icd9cm
 		'ICD10CM:', -- code_prefix_icd10cm
-		to_date('&&source_data_updated_date'), -- source_data_updated_date  to_date('2021-10-10 00:00:00')
+		to_date('&source_data_updated_date'), -- source_data_updated_date  to_date('2021-10-10 00:00:00')
 		-- Phase 1
 		0, -- include_extra_cohorts_phase1 (please set to 1 if allowed by your IRB and institution)
 		0, -- obfuscation_blur
@@ -212,7 +214,7 @@ create table icd_map nologging parallel TABLESPACE COVID as
 select distinct 
 c_basecode dx_id,
 'ICD10CM:' || pcori_basecode icd10
-from nightherondata.pcornet_diag
+from "&&crcSchema".pcornet_diag
 where c_basecode like 'KUH|DX_ID%'
 and  pcornet_diag.c_fullname like '\PCORI\DIAGNOSIS\10%'
 and pcori_basecode is not null
@@ -307,7 +309,7 @@ insert into fource_code_map
 	-- union  all select 'icu_location_cd', 'ICU' from dual
     
 	-- ICU visits (from the observation_fact.concept_cd field)
-       union  all select 'icu_concept_cd', 'ENC_TYPE:ICU_STAY' from dual                -- select CONCEPT_CD from  nightherondata.concept_dimension   where CONCEPT_PATH LIKE '\i2b2\Visit Details\ENC_TYPE\IP\ICU\%'; --ENC_TYPE:ICU_STAY
+       union  all select 'icu_concept_cd', 'ENC_TYPE:ICU_STAY' from dual                -- select CONCEPT_CD from  "&&crcSchema".concept_dimension   where CONCEPT_PATH LIKE '\i2b2\Visit Details\ENC_TYPE\IP\ICU\%'; --ENC_TYPE:ICU_STAY
 	-- union  all select 'icu_concept_cd', 'UMLS:C1547136' from dual-- from ACT ontology
    	-- union  all select 'icu_concept_cd', 'CPT4:99291' from dual-- from ACT ontology
 	--union  all select 'icu_concept_cd', 'CPT4:99292' from dual-- from ACT ontology
@@ -471,7 +473,7 @@ commit;
 --------------------------------------------------------------------------------
 WHENEVER SQLERROR CONTINUE;
 DROP TABLE fource_lab_map;
-WHENEVER SQLERROR EXIT;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 create table fource_lab_map (
 	fource_loinc varchar(20) not null, 
 	fource_lab_units varchar(20) not null, 
@@ -630,7 +632,7 @@ WHENEVER SQLERROR CONTINUE;
 DROP TABLE fource_lab_units_facts;
 drop index fource_lap_map_ndx;
 drop table fource_lab_map_report;
-WHENEVER SQLERROR EXIT;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
 create table fource_lab_units_facts (
 	fact_code varchar(50) not null,
@@ -750,7 +752,7 @@ WHENEVER SQLERROR CONTINUE;
 drop table fource_med_map;
 drop table fource_med_map_childs_code;
 drop table fource_med_map_childs;
-WHENEVER SQLERROR EXIT;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
 create table fource_med_map (
 	med_class varchar(50) not null,
@@ -2180,14 +2182,14 @@ select concept_path, concept_cd
 --get path of rxnorm's childeren
 create table fource_med_map_childs_code nologging parallel as
 with rxnorm_children_concept_path as (
-    select concept_cd rxnorm,concept_path from nightherondata.concept_dimension
+    select concept_cd rxnorm,concept_path from "&&crcSchema".concept_dimension
     where concept_cd in (select local_med_code from fource_med_map)
 )
 select 
 distinct --get concept_cd, med_class and code_type of rxnorm's childeren
 rx_ch.rxnorm,
 cdim.concept_cd rxnorm_child_concept_cd
-from nightherondata.concept_dimension cdim
+from "&&crcSchema".concept_dimension cdim
 join rxnorm_children_concept_path rx_ch
     on cdim.concept_path like rx_ch.concept_path || '%'
 ;
@@ -2225,7 +2227,7 @@ commit;
 --------------------------------------------------------------------------------
 WHENEVER SQLERROR CONTINUE;
 drop table fource_proc_map;
-WHENEVER SQLERROR EXIT;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
 create table fource_proc_map (
 	proc_group varchar(50) not null,
@@ -2499,15 +2501,15 @@ select concept_path, concept_cd
 -- start KUMC specific get childs for  proc
 --------------------------------------------------------------------------------
 select substr(concept_cd,1,instr(concept_cd,':')-1), count(*)
-from  nightherondata.CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\C4\%'
+from  "&&crcSchema".CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\C4\%'
 group by substr(concept_cd,1,instr(concept_cd,':')-1)
 union all
 select substr(concept_cd,1,instr(concept_cd,':')-1), count(*)
-from  nightherondata.CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\10\%'
+from  "&&crcSchema".CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\10\%'
 group by substr(concept_cd,1,instr(concept_cd,':')-1)
 union all
 select substr(concept_cd,1,instr(concept_cd,':')-1), count(*)
-from  nightherondata.CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\09\%'
+from  "&&crcSchema".CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\09\%'
 group by substr(concept_cd,1,instr(concept_cd,':')-1)
 ;
 /*
@@ -2533,7 +2535,7 @@ ICD9
 -- TODO by LP: participate in MISC
 WHENEVER SQLERROR CONTINUE;
 drop table fource_misc;
-WHENEVER SQLERROR EXIT;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 create table fource_misc (
 	patient_num int not null,
 	misc_date date not null
@@ -2555,7 +2557,7 @@ commit;
 --------------------------------------------------------------------------------
 WHENEVER SQLERROR CONTINUE;
 drop table fource_cohort_config;
-WHENEVER SQLERROR EXIT;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 create table fource_cohort_config (
 	cohort varchar(50) not null,
 	include_in_phase1 int, -- 1 = include the cohort in the phase 1 output, otherwise 0
@@ -2598,7 +2600,7 @@ drop table fource_observations;
 drop table fource_date_list;
 drop table fource_LocalPatientClinicalC;
 drop table fource_LocalPatientSummary;
-WHENEVER SQLERROR EXIT;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
 --##############################################################################
 --##############################################################################
