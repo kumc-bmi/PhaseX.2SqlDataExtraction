@@ -169,7 +169,7 @@ create table fource_config (
     --blackout_days_before -7 blackout_days_before 14 add these later
 );
 commit;
-alter session set nls_date_format = 'YYYY-MM-DD HH24:MI:SS'
+alter session set nls_date_format = 'YYYY-MM-DD HH24:MI:SS';
 --truncate table fource_config;
 insert into fource_config
 	select 'KUMC', -- siteid
