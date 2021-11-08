@@ -129,6 +129,7 @@ your schema. The code also assumes you have a single fact table called
 --### files to land
 --### Example replace @exportFilePath with C:\User\My4ceDir
 --##############################################################################
+SET TERMOUT ON;
 set echo on;
 --------------------------------------------------------------------------------
 -- General settings
