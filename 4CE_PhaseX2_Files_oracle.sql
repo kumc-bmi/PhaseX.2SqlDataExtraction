@@ -3391,7 +3391,7 @@ merge into fource_LocalPatientClinicalC p
 					and trunc(i.start_date)<=trunc(p.calendar_date)
 					and trunc(i.end_date)>=trunc(p.calendar_date)
                     and (select icu_data_available from fource_config where rownum=1)=1 ))d
-                    --group by patient_num,  calendar_date, in_hospital ;--order by patient_num, calendar_date);
+                    --group by patient_num,  calendar_date, in_hospital ; --order by patient_num, calendar_date)
                 --select patient_num, calendar_date, in_hospital, in_icu from pt_icu )d
     on (d.patient_num=p.patient_num and d.calendar_date=p.calendar_date)
     when matched then
