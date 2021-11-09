@@ -2600,6 +2600,7 @@ drop table fource_observations;
 drop table fource_date_list;
 drop table fource_LocalPatientClinicalC;
 drop table fource_LocalPatientSummary;
+
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
 --##############################################################################
@@ -3514,8 +3515,8 @@ commit;
 --------------------------------------------------------------------------------
 -- LocalPatientObservations: Diagnoses, procedures, medications, and labs
 --------------------------------------------------------------------------------
---drop table fource_LocalPatientObservations;
-create table fource_LocalPatientObservations (
+--drop table fource_LocalPatientObs;
+create table fource_LocalPatientObs (
 	siteid varchar(50) not null,
 	cohort varchar(50) not null,
 	patient_num int not null,
@@ -3524,8 +3525,8 @@ create table fource_LocalPatientObservations (
 	concept_code varchar(50) not null,
 	value numeric(18,5) not null
 );
-alter table fource_LocalPatientObservations add primary key (cohort, patient_num, days_since_admission, concept_type, concept_code, siteid);
-insert into fource_LocalPatientObservations
+alter table fource_LocalPatientObs add primary key (cohort, patient_num, days_since_admission, concept_type, concept_code, siteid);
+insert into fource_LocalPatientObs
 	select (select siteid from fource_config where rownum = 1), 
     cohort, patient_num, days_since_admission, concept_type, concept_code, value
 	from fource_observations;
@@ -4319,7 +4320,7 @@ insert into fource_LabCodes
 --Phase 2 patient level tables
 delete from fource_LocalPatientClinicalC where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
 delete from fource_LocalPatientSummary where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
-delete from fource_LocalPatientObservations where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
+delete from fource_LocalPatientObs where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
 delete from fource_LocalPatientRace where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
 
 --------------------------------------------------------------------------------
@@ -4371,15 +4372,15 @@ update set patient_num = m.study_num;
 ALTER TABLE fource_LocalPatientSummary drop column patient_num_orig;
 commit;
 
-ALTER TABLE fource_LocalPatientObservations ADD patient_num_orig int;
-update fource_LocalPatientObservations set patient_num_orig = patient_num;               
-merge into fource_LocalPatientObservations t 
+ALTER TABLE fource_LocalPatientObs ADD patient_num_orig int;
+update fource_LocalPatientObs set patient_num_orig = patient_num;               
+merge into fource_LocalPatientObs t 
 using (select patient_num, study_num 
         from fource_LocalPatientMapping where (select replace_patient_num from fource_config where rownum = 1) = 1) m
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
-ALTER TABLE fource_LocalPatientObservations drop column patient_num_orig;
+ALTER TABLE fource_LocalPatientObs drop column patient_num_orig;
 commit;
 
 ALTER TABLE fource_LocalPatientRace ADD patient_num_orig int;
@@ -4412,7 +4413,7 @@ as tables were being buily
 --Phase 2 patient level tables
 update fource_LocalPatientClinicalC set siteid = (select siteid from fource_config)
 update fource_LocalPatientSummary set siteid = (select siteid from fource_config)
-update fource_LocalPatientObservations set siteid = (select siteid from fource_config)
+update fource_LocalPatientObs set siteid = (select siteid from fource_config)
 update fource_LocalPatientRace set siteid = (select siteid from fource_config)
 update fource_LocalPatientMapping set siteid = (select siteid from fource_config)
 --Phase 2 aggregate count tables
@@ -4481,7 +4482,7 @@ update fource_LabCodes set siteid = (select siteid from fource_config)
 	--Phase 2 patient-level files
 	select * from fource_LocalPatientClinicalC where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num, days_since_admission;
 	select * from fource_LocalPatientSummary where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num;
-	select * from fource_LocalPatientObservations where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num, days_since_admission, concept_type, concept_code;
+	select * from fource_LocalPatientObs where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num, days_since_admission, concept_type, concept_code;
 	select * from fource_LocalPatientRace where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num, race_local_code;
 	select * from fource_LocalPatientMapping where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  patient_num;
 
@@ -4594,7 +4595,7 @@ spool off
 
 
 spool c:\Devtools\NCATS\covid\4cescripts\LocalPatientObservations.csv
-select s LocalPatientObservationsCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,concept_type,concept_code,value' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission,concept_type,concept_code) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(concept_type as varchar2(2000)) || ',' || cast(concept_code as varchar2(2000)) || ',' || cast(value as varchar2(2000)) from fource_LocalPatientObservations union all select 9999999 z, '' from dual) t order by z;
+select s LocalPatientObservationsCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,concept_type,concept_code,value' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission,concept_type,concept_code) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(concept_type as varchar2(2000)) || ',' || cast(concept_code as varchar2(2000)) || ',' || cast(value as varchar2(2000)) from fource_LocalPatientObs union all select 9999999 z, '' from dual) t order by z;
 spool off
 
 
@@ -4667,7 +4668,7 @@ drop table fource_LocalRaceBy4CECode
 -- Phase 2 patient-level files
 drop table fource_LocalPatientSummary 
 drop table fource_LocalPatientClinicalC 
-drop table fource_LocalPatientObservations 
+drop table fource_LocalPatientObs 
 drop table fource_LocalPatientRace 
 drop table fource_LocalPatientMapping 
 
@@ -4787,7 +4788,7 @@ end
 		--Phase 2 patient-level files
 		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientSummary from fource_LocalPatientSummary;'
 		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientClinicalCourse from fource_LocalPatientClinicalC;'
-		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientObservations from fource_LocalPatientObservations;'
+		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientObservations from fource_LocalPatientObs;'
 		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientRace from fource_LocalPatientRace;'
 		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientMapping from fource_LocalPatientMapping;'
 		 || '; alter table ' || save_phase2_as_prefix || 'LocalPatientClinicalCourse add primary key (cohort, patient_num, days_since_admission, siteid);'
