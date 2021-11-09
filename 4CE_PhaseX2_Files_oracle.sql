@@ -2601,6 +2601,9 @@ drop table fource_date_list;
 drop table fource_LocalPatientClinicalC;
 drop table fource_LocalPatientSummary;
 drop table fource_LocalPatientObs;
+drop table fource_LocalPatientRace;
+drop table fource_LocalCohorts;
+drop table fource_LocalDailyCounts;
 
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
