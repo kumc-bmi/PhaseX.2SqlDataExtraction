@@ -3651,7 +3651,11 @@ insert into fource_LocalDailyCounts
 --select * from fource_LocalDailyCounts;
 --select * from fource_LocalPatientSummary where icu_date >to_date('01-JAN-1900', 'DD-MON-YYYY') order by cohort, admission_date;
 --**************TODO: MICHELE ERROR Unable to get stable rows in source*****************
-/*merge into fource_LocalDailyCounts c
+select 1 from dual;
+
+/*
+
+merge into fource_LocalDailyCounts c
     using (
       select calendar_date, cohort, icu_date, cumm_daily_count from (
       select distinct d.calendar_date, d.cohort, a.icu_date, count(*) cumm_daily_count
