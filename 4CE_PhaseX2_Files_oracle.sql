@@ -2604,6 +2604,7 @@ drop table fource_LocalPatientObs;
 drop table fource_LocalPatientRace;
 drop table fource_LocalCohorts;
 drop table fource_LocalDailyCounts;
+drop table fource_LocalClinicalCourse;
 
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
@@ -4461,6 +4462,8 @@ update fource_LabCodes set siteid = (select siteid from fource_config)
 --##############################################################################
 
 
+exit;
+/*
 
 --******************************************************************************
 --******************************************************************************
