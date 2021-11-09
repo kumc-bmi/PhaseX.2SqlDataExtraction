@@ -2605,7 +2605,21 @@ drop table fource_LocalPatientRace;
 drop table fource_LocalCohorts;
 drop table fource_LocalDailyCounts;
 drop table fource_LocalClinicalCourse;
-
+drop table fource_LocalAgeSex;
+drop table fource_LocalLabs;
+drop table fource_LocalDiagProcMed;
+drop table fource_LocalRaceByLocalCode;
+drop table fource_DailyCounts;
+drop table fource_CLinicalCourse;
+drop table fource_AgeSex;
+drop table fource_Labs;
+drop table fource_DiagProcMed;
+drop table fource_RaceBy4CECode;
+drop table fource_LocalRaceBy4CECode;
+drop table fource_Cohorts;
+drop table fource_RaceByLocalCode;
+drop table fource_LabCodes;
+drop table fource_LocalPatientMapping;
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
 --##############################################################################
@@ -4380,6 +4394,7 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
+alter table fource_LocalPatientSummary move nocompress; --cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientSummary drop column patient_num_orig;
 commit;
 
@@ -4391,6 +4406,7 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
+alter table fource_LocalPatientObs move nocompress; --cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientObs drop column patient_num_orig;
 commit;
 
@@ -4402,6 +4418,7 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
+alter table fource_LocalPatientRace move nocompress; --cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientRace drop column patient_num_orig;
 commit;
 
