@@ -3227,7 +3227,7 @@ set f.severe=1
 where exists(select patient_num,cohort
 	     from fource_cohort_patients c where c.severe=0 and 
 f.patient_num = c.patient_num and f.cohort = c.cohort);
-
+commit;
 --------------------------------------------------------------------------------
 -- Add death dates to patients who have died.
 --------------------------------------------------------------------------------
@@ -3343,7 +3343,7 @@ create table fource_LocalPatientClinicalC (
 
 alter table fource_LocalPatientClinicalC add primary key (cohort, patient_num, days_since_admission, siteid);
 -- Get the list of dates and flag the ones where the patients were severe or deceased
-insert /*+ APPEND */ into fource_LocalPatientClinicalC 
+insert into fource_LocalPatientClinicalC 
     (siteid, cohort, patient_num, days_since_admission, calendar_date, in_hospital, severe, in_icu, dead)
 	select (select siteid from fource_config where rownum = 1) siteid, 
         p.cohort, p.patient_num, 
@@ -3461,7 +3461,7 @@ commit;
 --select * from fource_LocalPatientSummary;
 
 -- Update sex if sex stored in observation_fact table
-merge /*+ APPEND */ into fource_LocalPatientSummary s
+merge into fource_LocalPatientSummary s
 using (select p.sex, p.patient_num
 	   from fource_LocalPatientSummary s
 		inner join (
