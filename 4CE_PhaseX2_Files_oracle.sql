@@ -4366,6 +4366,8 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
+
+alter table fource_LocalPatientClinicalC move nocompress; --cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientClinicalC drop column patient_num_orig;
 commit;
 
