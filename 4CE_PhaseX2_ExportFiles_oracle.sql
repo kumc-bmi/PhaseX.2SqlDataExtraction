@@ -1,7 +1,7 @@
 --#####
 --##### Global replace @exportFilePath to the path where you would like to export your csv files
 --#####
-set exportFilePath='export'
+define exportFilePath=&1
 set pagesize 0
 set echo off
 set feedback off
@@ -105,3 +105,5 @@ spool off
 spool &&exportFilePath/LocalPatientMapping.csv
 select s LocalPatientMappingCSV from ( select 0 z, 'siteid,patient_num,study_num' s from dual union all select row_number() over (order by patient_num) z, cast(siteid as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(study_num as varchar2(2000)) from fource_LocalPatientMapping ) t order by z;
 spool off
+
+exit;
