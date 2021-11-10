@@ -4382,7 +4382,7 @@ on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
 
-alter table fource_LocalPatientClinicalC move nocompress; --cant dropped column in compress table by tablespace.
+alter table fource_LocalPatientClinicalC move nocompress; -- cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientClinicalC drop column patient_num_orig;
 commit;
 
@@ -4394,7 +4394,7 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
-alter table fource_LocalPatientSummary move nocompress; --cant dropped column in compress table by tablespace.
+alter table fource_LocalPatientSummary move nocompress; -- cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientSummary drop column patient_num_orig;
 commit;
 
@@ -4406,7 +4406,7 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
-alter table fource_LocalPatientObs move nocompress; --cant dropped column in compress table by tablespace.
+alter table fource_LocalPatientObs move nocompress; -- cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientObs drop column patient_num_orig;
 commit;
 
@@ -4418,7 +4418,7 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
-alter table fource_LocalPatientRace move nocompress; --cant dropped column in compress table by tablespace.
+alter table fource_LocalPatientRace move nocompress; -- cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientRace drop column patient_num_orig;
 commit;
 
