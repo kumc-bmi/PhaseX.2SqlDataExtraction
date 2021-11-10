@@ -1,4 +1,4 @@
-all:.make.4CE_PhaseX2_Files_oracle 4CE_PhaseX2_ExportFiles_oracle
+all:.make.4CE_PhaseX2_Files_oracle .make.4CE_PhaseX2_ExportFiles_oracle
 
 .make.4CE_PhaseX2_ExportFiles_oracle: .make.4CE_PhaseX2_Files_oracle
 	mkdir -p export_PhaseX.2
