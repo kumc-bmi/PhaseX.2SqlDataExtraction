@@ -3359,7 +3359,7 @@ create table fource_LocalPatientClinicalC (
 	severe int not null,
 	in_icu int not null,
 	dead int not null
-);
+) nocompress ;
 
 alter table fource_LocalPatientClinicalC add primary key (cohort, patient_num, days_since_admission, siteid);
 -- Get the list of dates and flag the ones where the patients were severe or deceased
@@ -3441,7 +3441,7 @@ create table fource_LocalPatientSummary (
 	age_group varchar(50) not null,
 	age int not null,
 	sex varchar(50) not null
-);
+) nocompress ;
 alter table fource_LocalPatientSummary add primary key (cohort, patient_num, siteid);
 -- Get the admission, severe, and death dates; and age and sex.
 insert into fource_LocalPatientSummary
@@ -3543,7 +3543,7 @@ create table fource_LocalPatientObs (
 	concept_type varchar(50) not null,
 	concept_code varchar(50) not null,
 	value numeric(18,5) not null
-);
+) nocompress ;
 alter table fource_LocalPatientObs add primary key (cohort, patient_num, days_since_admission, concept_type, concept_code, siteid);
 insert into fource_LocalPatientObs
 	select (select siteid from fource_config where rownum = 1), 
@@ -3560,7 +3560,7 @@ create table fource_LocalPatientRace (
 	patient_num int not null,
 	race_local_code varchar(500) not null,
 	race_4ce varchar(100) not null
-);
+) nocompress;
 alter table fource_LocalPatientRace add primary key (cohort, patient_num, race_local_code, siteid);
 insert into fource_LocalPatientRace
 		select distinct (select siteid from fource_config where rownum = 1) siteid, cohort, patient_num, race_local_code, race_4ce
@@ -4382,8 +4382,6 @@ on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
 
-alter table fource_LocalPatientClinicalC move nocompress; -- cant dropped column in compress table by tablespace.
-select 1 from dual;
 ALTER TABLE fource_LocalPatientClinicalC drop column patient_num_orig;
 commit;
 
@@ -4395,7 +4393,6 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
-alter table fource_LocalPatientSummary move nocompress; -- cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientSummary drop column patient_num_orig;
 commit;
 
@@ -4407,7 +4404,6 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
-alter table fource_LocalPatientObs move nocompress; -- cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientObs drop column patient_num_orig;
 commit;
 
@@ -4419,7 +4415,6 @@ using (select patient_num, study_num
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
-alter table fource_LocalPatientRace move nocompress; -- cant dropped column in compress table by tablespace.
 ALTER TABLE fource_LocalPatientRace drop column patient_num_orig;
 commit;
 
