@@ -4383,6 +4383,7 @@ when matched then
 update set patient_num = m.study_num;
 
 alter table fource_LocalPatientClinicalC move nocompress; -- cant dropped column in compress table by tablespace.
+select 1 from dual;
 ALTER TABLE fource_LocalPatientClinicalC drop column patient_num_orig;
 commit;
 
