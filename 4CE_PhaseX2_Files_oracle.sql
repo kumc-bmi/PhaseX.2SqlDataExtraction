@@ -281,6 +281,9 @@ alter table fource_code_map add primary key (code, local_code);
 -- * You can replace this code with external mapping tables of location codes for example a list of hospital units 
 insert into fource_code_map
 	select '', ''  from dual where 1=0
+    union  all select 'inpatient_concept_cd', 'KUH|HOSP_ADT_CLASS:101' from dual
+    union  all select 'inpatient_concept_cd', 'ENC_TYPE:ICU_STAY' from dual
+;
 	-- Inpatient visits (from the visit_dimension.inout_cd field)
 	-- union all select 'inpatient_inout_cd', 'I' from dual
     -- union  all select 'inpatient_inout_cd', 'IN' from dual
@@ -292,9 +295,6 @@ insert into fource_code_map
 	-- union  all select 'inpatient_concept_cd', 'UMLS:C1547137' from dual -- from ACT ontology
     
     -- select CONCEPT_CD from  "&&crcSchema".concept_dimension   where CONCEPT_PATH LIKE '\i2b2\Visit Details\ENC_TYPE\IP\%'
-    union  all select 'inpatient_concept_cd', 'KUH|HOSP_ADT_CLASS:101' from dual
-    union  all select 'inpatient_concept_cd', 'ENC_TYPE:ICU_STAY' from dual
-;
 commit;
 
 -- ICU visit codes (optional)
@@ -521,7 +521,7 @@ insert into fource_lab_map
 --		from dual union select  '777-3',   '10*3/uL',    'platelet count',                                1, '777-3',    '10*3/uL',   'YourLocalLabName'
 --		from dual union select  '34714-6', 'DEFAULT',    'INR',                                           1, '34714-6',  'DEFAULT',   'YourLocalLabName' 
         from dual
-
+	) ;
 		--Example of listing an additional code for the same lab
 		--from dual union select '2019-8', 'mmHg', 'PaCO2', 1, 'LAB:PaCO2', 'mmHg', 'Carbon dioxide partial pressure in arterial blood'
 		--Examples of listing different units for the same lab
@@ -529,7 +529,6 @@ insert into fource_lab_map
 		--from dual union select '2703-7', 'mmHg', 'PaO2', 25.4, '2703-7', 'inHg', 'PaO2'
 		--This will use the given scale factor (in this case 1) for any lab with NULL or empty string units 
 		--from dual union select '2703-7', 'mmHg', 'PaO2', 1, '2703-7', 'DEFAULT', 'PaO2 [mmHg]'
-	) ;
 commit;
 
 -- TODO: add more labs
