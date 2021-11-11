@@ -2570,15 +2570,15 @@ create table fource_cohort_config (
 alter table fource_cohort_config add primary key (cohort);
 
 insert into fource_cohort_config
-	select           'PosAdm2020Q1', 1, 1, NULL, to_date('2020-01-01 00:00:00'),to_date('2020-03-31 00:00:00') from dual --'01-JAN-2020', '31-MAR-2020' 
-	union all select 'PosAdm2020Q2', 1, 1, NULL, to_date('2020-04-01 00:00:00'),to_date('2020-06-30 00:00:00') from dual --'01-APR-2020', '30-JUN-2020'
-	union all select 'PosAdm2020Q3', 1, 1, NULL, to_date('2020-07-01 00:00:00'),to_date('2020-09-30 00:00:00') from dual --'01-JUL-2020', '30-SEP-2020'
-	union all select 'PosAdm2020Q4', 1, 1, NULL, to_date('2020-10-01 00:00:00'),to_date('2020-12-31 00:00:00') from dual --'01-OCT-2020', '31-DEC-2020'
+	select           'PosAdm2020Q1', 1, 1, NULL, to_date('2020-01-01 00:00:00'),to_date('2020-03-31 00:00:00') from dual -- '01-JAN-2020', '31-MAR-2020' 
+	union all select 'PosAdm2020Q2', 1, 1, NULL, to_date('2020-04-01 00:00:00'),to_date('2020-06-30 00:00:00') from dual -- '01-APR-2020', '30-JUN-2020'
+	union all select 'PosAdm2020Q3', 1, 1, NULL, to_date('2020-07-01 00:00:00'),to_date('2020-09-30 00:00:00') from dual -- '01-JUL-2020', '30-SEP-2020'
+	union all select 'PosAdm2020Q4', 1, 1, NULL, to_date('2020-10-01 00:00:00'),to_date('2020-12-31 00:00:00') from dual -- '01-OCT-2020', '31-DEC-2020'
     
-	union all select 'PosAdm2021Q1', 1, 1, NULL, to_date('2021-01-01 00:00:00'),to_date('2021-03-31 00:00:00') from dual --'01-JAN-2021', '31-MAR-2021'
-	union all select 'PosAdm2021Q2', 1, 1, NULL, to_date('2021-04-01 00:00:00'),to_date('2021-06-30 00:00:00') from dual --'01-APR-2021', '30-JUN-2021'
-	union all select 'PosAdm2021Q3', 1, 1, NULL, to_date('2021-07-01 00:00:00'),to_date('2021-09-30 00:00:00') from dual --'01-JUL-2021', '30-SEP-2021'
-	union all select 'PosAdm2021Q4', 1, 1, NULL, to_date('2021-10-01 00:00:00'),to_date('2021-12-31 00:00:00') from dual --'01-OCT-2021', '31-DEC-2021'
+	union all select 'PosAdm2021Q1', 1, 1, NULL, to_date('2021-01-01 00:00:00'),to_date('2021-03-31 00:00:00') from dual -- '01-JAN-2021', '31-MAR-2021'
+	union all select 'PosAdm2021Q2', 1, 1, NULL, to_date('2021-04-01 00:00:00'),to_date('2021-06-30 00:00:00') from dual -- '01-APR-2021', '30-JUN-2021'
+	union all select 'PosAdm2021Q3', 1, 1, NULL, to_date('2021-07-01 00:00:00'),to_date('2021-09-30 00:00:00') from dual -- '01-JUL-2021', '30-SEP-2021'
+	union all select 'PosAdm2021Q4', 1, 1, NULL, to_date('2021-10-01 00:00:00'),to_date('2021-12-31 00:00:00') from dual -- '01-OCT-2021', '31-DEC-2021'
 ;
 commit;
 -- Assume the data were updated on the date this script is run if source_data_updated_date is null
