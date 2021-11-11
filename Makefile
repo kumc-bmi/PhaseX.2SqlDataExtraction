@@ -1,6 +1,6 @@
 export console_log="${JENKINS_HOME}"/jobs/"${JOB_NAME}"/builds/"${BUILD_NUMBER}"/log
 
-all:.make.4CE_PhaseX2_Files_oracle .make.4CE_PhaseX2_ExportFiles_oracle .make.grep_error
+all: .make.4CE_PhaseX2_ExportFiles_oracle .make.grep_error
 
 .make.4CE_PhaseX2_ExportFiles_oracle: #.make.4CE_PhaseX2_Files_oracle
 	mkdir -p export
@@ -14,7 +14,7 @@ all:.make.4CE_PhaseX2_Files_oracle .make.4CE_PhaseX2_ExportFiles_oracle .make.gr
 
 	touch .make.4CE_PhaseX2_Files_oracle
 
-.make.grep_error: .make.4CE_PhaseX2_ExportFiles_oracle
+.make.grep_error:
 	grep -i 'error' "${console_log}" > error.log
 	grep    'ORA-'  "${console_log}" > error_ORA.log
 	grep    'SP2-'  "${console_log}" > error_SP2.log
