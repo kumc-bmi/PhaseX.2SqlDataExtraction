@@ -286,12 +286,12 @@ insert into fource_code_map
     -- union  all select 'inpatient_inout_cd', 'IN' from dual
 	-- Inpatient visits (from the visit_dimension.location_cd field) 
     -- copy the line below for each code or location that represents an inpatient 
-	--union  all select 'inpatient_location_cd', 'Inpatient' from dual
+	-- union  all select 'inpatient_location_cd', 'Inpatient' from dual
 	-- ICU visits (from the observation_fact.concept_cd field)
     -- copy the line below for each code or location that represents an inpatient 
-	-- union  all select 'inpatient_concept_cd', 'UMLS:C1547137' from dual-- from ACT ontology
+	-- union  all select 'inpatient_concept_cd', 'UMLS:C1547137' from dual -- from ACT ontology
     
-    -- select CONCEPT_CD from  "&&crcSchema".concept_dimension   where CONCEPT_PATH LIKE '\i2b2\Visit Details\ENC_TYPE\IP\%';
+    -- select CONCEPT_CD from  "&&crcSchema".concept_dimension   where CONCEPT_PATH LIKE '\i2b2\Visit Details\ENC_TYPE\IP\%'
     union  all select 'inpatient_concept_cd', 'KUH|HOSP_ADT_CLASS:101' from dual
     union  all select 'inpatient_concept_cd', 'ENC_TYPE:ICU_STAY' from dual
 ;
@@ -309,14 +309,14 @@ insert into fource_code_map
 	-- union  all select 'icu_location_cd', 'ICU' from dual
     
 	-- ICU visits (from the observation_fact.concept_cd field)
-       union  all select 'icu_concept_cd', 'ENC_TYPE:ICU_STAY' from dual                -- select CONCEPT_CD from  "&&crcSchema".concept_dimension   where CONCEPT_PATH LIKE '\i2b2\Visit Details\ENC_TYPE\IP\ICU\%'; --ENC_TYPE:ICU_STAY
-	-- union  all select 'icu_concept_cd', 'UMLS:C1547136' from dual-- from ACT ontology
-   	-- union  all select 'icu_concept_cd', 'CPT4:99291' from dual-- from ACT ontology
-	--union  all select 'icu_concept_cd', 'CPT4:99292' from dual-- from ACT ontology
+       select 'icu_concept_cd', 'ENC_TYPE:ICU_STAY' from dual
+	-- union  all select 'icu_concept_cd', 'UMLS:C1547136' from dual -- from ACT ontology
+   	-- union  all select 'icu_concept_cd', 'CPT4:99291' from dual -- from ACT ontology
+	-- union  all select 'icu_concept_cd', 'CPT4:99292' from dual -- from ACT ontology
     -- ICU visits (from the observation_fact.location_cd field)
-	--union  all select 'icu_fact_location_cd', 'ICU' from dual
+	-- union  all select 'icu_fact_location_cd', 'ICU' from dual
     -- ICU location_cd in observation_fact selected from external icu map
-    --union all select 'icu_fact_location_cd', icu_unit_code from external_icu_map
+    -- union all select 'icu_fact_location_cd', icu_unit_code from external_icu_map
 ;
 --select * from fource_code_map;
 commit;
@@ -529,7 +529,7 @@ insert into fource_lab_map
 		--from dual union select '2703-7', 'mmHg', 'PaO2', 25.4, '2703-7', 'inHg', 'PaO2'
 		--This will use the given scale factor (in this case 1) for any lab with NULL or empty string units 
 		--from dual union select '2703-7', 'mmHg', 'PaO2', 1, '2703-7', 'DEFAULT', 'PaO2 [mmHg]'
-	) t;
+	) ;
 commit;
 
 -- TODO: add more labs
@@ -671,9 +671,7 @@ case
     when count(*) = 0 then 0 
     else 1/0 --one lab has more than 1 units
 END any_lab_has_more_than_1_units
-
-from labs_with_gt1_units
-;
+from labs_with_gt1_units;
 
 
 --select * from fource_lab_units_facts;
@@ -2574,7 +2572,6 @@ insert into fource_cohort_config
 	union all select 'PosAdm2020Q2', 1, 1, NULL, to_date('2020-04-01 00:00:00'),to_date('2020-06-30 00:00:00') from dual -- '01-APR-2020', '30-JUN-2020'
 	union all select 'PosAdm2020Q3', 1, 1, NULL, to_date('2020-07-01 00:00:00'),to_date('2020-09-30 00:00:00') from dual -- '01-JUL-2020', '30-SEP-2020'
 	union all select 'PosAdm2020Q4', 1, 1, NULL, to_date('2020-10-01 00:00:00'),to_date('2020-12-31 00:00:00') from dual -- '01-OCT-2020', '31-DEC-2020'
-    
 	union all select 'PosAdm2021Q1', 1, 1, NULL, to_date('2021-01-01 00:00:00'),to_date('2021-03-31 00:00:00') from dual -- '01-JAN-2021', '31-MAR-2021'
 	union all select 'PosAdm2021Q2', 1, 1, NULL, to_date('2021-04-01 00:00:00'),to_date('2021-06-30 00:00:00') from dual -- '01-APR-2021', '30-JUN-2021'
 	union all select 'PosAdm2021Q3', 1, 1, NULL, to_date('2021-07-01 00:00:00'),to_date('2021-09-30 00:00:00') from dual -- '01-JUL-2021', '30-SEP-2021'
@@ -2867,7 +2864,7 @@ insert into fource_cohort_patients (cohort, patient_num, admission_date, source_
 			from fource_first_covid_tests t
 				inner join fource_admissions a
 					on t.patient_num=a.patient_num
-						--and datediff(dd,t.first_pos_date,a.admission_date) between @blackout_days_before and @blackout_days_after
+						-- and datediff(dd,t.first_pos_date,a.admission_date) between @blackout_days_before and @blackout_days_after
                         and trunc(a.admission_date) - trunc(t.first_pos_date) between -7 and 14
 
 			where t.first_pos_date is not null
