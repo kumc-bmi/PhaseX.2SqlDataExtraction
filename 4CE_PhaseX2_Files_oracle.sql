@@ -2863,9 +2863,7 @@ insert into fource_cohort_patients (cohort, patient_num, admission_date, source_
 			from fource_first_covid_tests t
 				inner join fource_admissions a
 					on t.patient_num=a.patient_num
-						-- and datediff(dd,t.first_pos_date,a.admission_date) between @blackout_days_before and @blackout_days_after
                         and trunc(a.admission_date) - trunc(t.first_pos_date) between -7 and 14
-
 			where t.first_pos_date is not null
 			group by t.patient_num
 		) t
