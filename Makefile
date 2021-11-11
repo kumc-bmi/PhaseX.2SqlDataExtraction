@@ -15,10 +15,10 @@ all: .make.4CE_PhaseX2_ExportFiles_oracle .make.grep_error
 	touch .make.4CE_PhaseX2_Files_oracle
 
 .make.grep_error:
-	set +x
-	grep -i 'error' "${console_log}" > error.log
-	grep    'ORA-'  "${console_log}" > error_ORA.log
-	grep    'SP2-'  "${console_log}" > error_SP2.log
+	set +x &&\
+	grep -i 'error' "${console_log}" > error.log &&\
+	grep    'ORA-'  "${console_log}" > error_ORA.log &&\
+	grep    'SP2-'  "${console_log}" > error_SP2.log &&\
 	set -x
 	touch .make.grep_error
 
