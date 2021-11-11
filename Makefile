@@ -1,4 +1,4 @@
-export console_log="${JENKINS_HOME}"/jobs/"${JOB_NAME}"/builds/"${BUILD_NUMBER}"/log
+export console_log=${JENKINS_HOME}/jobs/${JOB_NAME}/builds/${BUILD_NUMBER}/log
 
 all: .make.4CE_PhaseX2_ExportFiles_oracle .make.grep_potential_issues
 
@@ -16,7 +16,7 @@ all: .make.4CE_PhaseX2_ExportFiles_oracle .make.grep_potential_issues
 
 .make.grep_potential_issues:
 	./grep_potential_issues.sh
-	
+
 	touch .make.grep_potential_issues
 
 clean:
