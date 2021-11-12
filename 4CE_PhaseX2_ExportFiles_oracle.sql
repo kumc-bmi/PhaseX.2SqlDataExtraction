@@ -7,6 +7,12 @@ set echo off
 set feedback off
 set term off
 
+-- added by lp
+SET LINESIZE 32767
+SET TRIMSPOOL ON
+SET TRIMOUT ON
+SET TERMOUT OFF
+
 spool &&exportFilePath/DailyCounts.csv
 select s DailyCountsCSV from ( select 0 z, 'siteid,cohort,calendar_date,cumulative_pts_all,cumulative_pts_icu,cumulative_pts_dead,cumulative_pts_severe,cumulative_pts_severe_icu,cumulative_pts_severe_dead,pts_in_hosp_on_this_date,pts_in_icu_on_this_date,pts_severe_in_hosp_on_date,pts_severe_in_icu_on_date' s from dual union all select row_number() over (order by cohort,calendar_date) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || to_char(calendar_date, 'YYYY-MM-DD') || ',' || cast(cumulative_pts_all as varchar2(2000)) || ',' || cast(cumulative_pts_icu as varchar2(2000)) || ',' || cast(cumulative_pts_dead as varchar2(2000)) || ',' || cast(cumulative_pts_severe as varchar2(2000)) || ',' || cast(cumulative_pts_severe_icu as varchar2(2000)) || ',' || cast(cumulative_pts_severe_dead as varchar2(2000)) || ',' || cast(pts_in_hosp_on_this_date as varchar2(2000)) || ',' || cast(pts_in_icu_on_this_date as varchar2(2000)) || ',' || cast(pts_severe_in_hosp_on_date as varchar2(2000)) || ',' || cast(pts_severe_in_icu_on_date as varchar2(2000)) from fource_DailyCounts ) t order by z;
 spool off
