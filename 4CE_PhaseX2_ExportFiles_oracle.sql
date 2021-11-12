@@ -83,7 +83,7 @@ spool off
 
 
 spool &&exportFilePath/LocalPatientClinicalCourse.csv
-select s LocalPatientClinicalCourseCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,calendar_date,in_hospital,severe,in_icu,dead' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(calendar_date as varchar2(2000)) || ',' || cast(in_hospital as varchar2(2000)) || ',' || cast(severe as varchar2(2000)) || ',' || cast(in_icu as varchar2(2000)) || ',' || cast(dead as varchar2(2000)) from fource_LocalPatientClinicalCourse ) t order by z;
+select s LocalPatientClinicalCourseCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,calendar_date,in_hospital,severe,in_icu,dead' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(calendar_date as varchar2(2000)) || ',' || cast(in_hospital as varchar2(2000)) || ',' || cast(severe as varchar2(2000)) || ',' || cast(in_icu as varchar2(2000)) || ',' || cast(dead as varchar2(2000)) from fource_LocalPatientClinicalC ) t order by z;
 spool off
 
 
@@ -93,7 +93,7 @@ spool off
 
 
 spool &&exportFilePath/LocalPatientObservations.csv
-select s LocalPatientObservationsCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,concept_type,concept_code,value' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission,concept_type,concept_code) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(concept_type as varchar2(2000)) || ',' || cast(concept_code as varchar2(2000)) || ',' || cast(value as varchar2(2000)) from fource_LocalPatientObservations ) t order by z;
+select s LocalPatientObservationsCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,concept_type,concept_code,value' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission,concept_type,concept_code) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(concept_type as varchar2(2000)) || ',' || cast(concept_code as varchar2(2000)) || ',' || cast(value as varchar2(2000)) from fource_LocalPatientObs ) t order by z;
 spool off
 
 
