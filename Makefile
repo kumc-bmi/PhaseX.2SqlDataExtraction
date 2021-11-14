@@ -1,6 +1,17 @@
 export console_log=${JENKINS_HOME}/jobs/${JOB_NAME}/builds/${BUILD_NUMBER}/log
 
-all: .make.4CE_PhaseX2_ExportFiles_oracle .make.grep_potential_issues
+all: .make.grep_potential_issues
+
+.make.grep_potential_issues: .make.table_row_counts
+	./grep_potential_issues.sh
+
+	touch .make.grep_potential_issues
+
+.make.table_row_counts: .make.4CE_PhaseX2_ExportFiles_oracle
+	cd export && wc -l * > table_row_counts.csv
+	
+	touch .make.table_row_counts
+
 
 .make.4CE_PhaseX2_ExportFiles_oracle: .make.4CE_PhaseX2_Files_oracle
 	mkdir -p export
@@ -14,10 +25,6 @@ all: .make.4CE_PhaseX2_ExportFiles_oracle .make.grep_potential_issues
 
 	touch .make.4CE_PhaseX2_Files_oracle
 
-.make.grep_potential_issues:
-	./grep_potential_issues.sh
-
-	touch .make.grep_potential_issues
 
 clean:
 	rm .make* || true
