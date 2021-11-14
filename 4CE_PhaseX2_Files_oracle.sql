@@ -372,7 +372,6 @@ insert into fource_code_map
      from dual
 	-- Race (from the observation_fact.concept_cd field)
     union  all
-
     select 'race_fact:american_indian', 'DEM|RACE:amerian ind' 
 	from dual union  all select 'race_fact:asian', 'DEM|RACE:asian' 
 	-- from dual union  all select 'race_fact:asian', 'DEM|race:AS' 
