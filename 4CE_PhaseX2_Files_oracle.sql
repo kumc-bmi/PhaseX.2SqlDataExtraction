@@ -356,16 +356,20 @@ insert into fource_code_map
 	-- Race: United States
 	-------------------------------------------------------------------
 	-- Race (from the patient _dimension.race_cd field)
-	-- union all select 'race_patient:american_indian', 'NA' 
-	-- from dual union  all select 'race_patient:asian', 'A' 
+	 union all select 'race_patient:american_indian', 'amerian ind' 
+	 from dual union  all select 'race_patient:asian', 'asian' 
 	-- from dual union  all select 'race_patient:asian', 'AS' 
-	-- from dual union  all select 'race_patient:black', 'B' 
-	-- from dual union  all select 'race_patient:hawaiian_pacific_islander', 'H' 
+	 from dual union  all select 'race_patient:black', 'black' 
+	 from dual union  all select 'race_patient:hawaiian_pacific_islander', 'pac islander' 
 	-- from dual union  all select 'race_patient:hawaiian_pacific_islander', 'P' 
-	-- from dual union  all select 'race_patient:white', 'W' 
+	 from dual union  all select 'race_patient:white', 'white' 
 	-- from dual union  all select 'race_patient:hispanic_latino', 'HL' 
-	-- from dual union  all select 'race_patient:other', 'O' -- include multiple if no additional information is known
-	-- from dual union  all select 'race_patient:no_information', 'NI'  -- unknown, not available, missing, refused to answer, not recorded, etc.
+	 from dual union  all select 'race_patient:other', 'two races' -- include multiple if no additional information is known
+     from dual union  all select 'race_patient:other', 'other'     -- include multiple if no additional information is known
+	 from dual union  all select 'race_patient:no_information', 'declined'  -- unknown, not available, missing, refused to answer, not recorded, etc.
+     from dual union  all select 'race_patient:no_information', 'not used'  -- unknown, not available, missing, refused to answer, not recorded, etc.
+     from dual union  all select 'race_patient:no_information', '@'         -- unknown, not available, missing, refused to answer, not recorded, etc.
+     from dual
 	-- Race (from the observation_fact.concept_cd field)
     union  all
 
