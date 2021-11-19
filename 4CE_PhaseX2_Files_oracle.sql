@@ -2590,6 +2590,7 @@ select * from fource_cohort_config;
 WHENEVER SQLERROR CONTINUE;
 drop table fource_covid_tests;
 drop table fource_admissions;
+drop table temp_fource_admissions
 drop table fource_icu;
 drop table fource_death;
 drop table fource_first_covid_tests;
@@ -2668,8 +2669,10 @@ create table fource_admissions (
 ); 
 
 alter table fource_admissions add primary key (patient_num, admission_date, discharge_date);
-insert into fource_admissions
-	select distinct patient_num, cast(start_date as date), nvl(cast(end_date as date),to_date('2199-01-01 00:00:00')) -- a very future date for missing discharge dates
+
+-- speeding up the execution
+create table temp_fource_admissions nologging parallel as
+	select distinct patient_num patient_num, cast(start_date as date) admission_date, nvl(cast(end_date as date),to_date('2199-01-01 00:00:00')) discharge_date -- a very future date for missing discharge dates
 	from (
 		-- Select by inout_cd
 		select patient_num, trunc(start_date) start_date, trunc(end_date) end_date
@@ -2694,6 +2697,7 @@ insert into fource_admissions
 				and f.patient_num in (select patient_num from fource_covid_tests)
 				and f.concept_cd in (select local_code from fource_code_map where code = 'inpatient_concept_cd')
 	) t;
+insert into fource_admissions select * from temp_fource_admissions;
 commit;
 
 --select * from FOURCE_ADMISSIONS;
