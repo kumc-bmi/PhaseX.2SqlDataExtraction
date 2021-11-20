@@ -2590,7 +2590,7 @@ select * from fource_cohort_config;
 WHENEVER SQLERROR CONTINUE;
 drop table fource_covid_tests;
 drop table fource_admissions;
-drop table temp_fource_admissions
+drop table temp_fource_admissions;
 drop table fource_icu;
 drop table fource_death;
 drop table fource_first_covid_tests;
