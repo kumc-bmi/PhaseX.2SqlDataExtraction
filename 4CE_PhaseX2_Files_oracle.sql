@@ -1,3 +1,12 @@
+/*
+variables from make file
+"&&crcSchema" = NIGHTHERONDATA
+"&&source_data_updated_date" =  '2021-10-10 00:00:00' 
+*/
+define crcSchema=&1
+define source_data_updated_date='&2'
+-- define source_data_updated_date_p2=&3
+-- define source_data_updated_dat= source_data_updated_date_p1 + source_data_updated_date_p2
 --##############################################################################
 --##############################################################################
 --### 4CE Phase 1.2 and 2.2
@@ -120,11 +129,17 @@ your schema. The code also assumes you have a single fact table called
 --### files to land
 --### Example replace @exportFilePath with C:\User\My4ceDir
 --##############################################################################
-
+set echo on;
 --------------------------------------------------------------------------------
 -- General settings
 --------------------------------------------------------------------------------
---drop table fource_config; -- make sure everything is clean 
+WHENEVER SQLERROR CONTINUE;
+drop table fource_config ;
+drop table fource_code_map;
+drop table fource_icu_location;
+drop table icd_map;
+drop table observation_fact_icd10;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 create table fource_config (
 	siteid varchar(20), -- Up to 20 letters or numbers, must start with letter, no spaces or special characters.
 	race_data_available int, -- 1 if your site collects race/ethnicity data; 0 if your site does not collect this.
@@ -150,20 +165,20 @@ create table fource_config (
 	output_phase2_as_csv int, -- Return the data in tables with a single column containing comma separated values
 	save_phase2_as_columns int, -- Save the data as tables with separate columns per field
 	save_phase2_as_prefix varchar(50), -- Table name prefix when saving the data as tables
-    	eval_start_date date -- use this so that dates can be changed consitently throughout the script
+    	start_date date -- use this so that dates can be changed consitently throughout the script
     --blackout_days_before -7 blackout_days_before 14 add these later
 );
 commit;
-
+alter session set nls_date_format = 'YYYY-MM-DD HH24:MI:SS';
 --truncate table fource_config;
 insert into fource_config
-	select 'UPitt', -- siteid
+	select 'KUMC', -- siteid
 		1, -- race_data_available
 		1, -- icu_data_available
 		1, -- death_data_available
-		'ICD9CM:', -- code_prefix_icd9cm
+		'ICD9:', -- code_prefix_icd9cm
 		'ICD10CM:', -- code_prefix_icd10cm
-		NULL, -- source_data_updated_date
+		to_date('&source_data_updated_date'), -- source_data_updated_date  to_date('2021-10-10 00:00:00')
 		-- Phase 1
 		0, -- include_extra_cohorts_phase1 (please set to 1 if allowed by your IRB and institution)
 		0, -- obfuscation_blur
@@ -181,15 +196,70 @@ insert into fource_config
 		0, -- output_phase2_as_csv
 		0, -- save_phase2_as_columns
 		'dbo_FourCE_', -- save_phase2_as_prefix (don't use "4CE" since it starts with a number
-        to_date('01-JAN-2019')
+        to_date('2019-01-01 00:00:00') --'01-JAN-2019' 
     from dual;
 commit;
+
+--test
+--select start_date, trunc(start_date) from "&&crcSchema".observation_fact where rownum = 1;
+--select start_date,trunc(start_date) from fource_config where rownum = 1;
 
 -- ! If your diagnosis codes do not start with a prefix (e.g., "ICD:"),
 -- ! then you will need to customize queries the use the observation_fact table
 -- ! so that only diagnoses are selected.
+--------------------------------------------------------------------------------
+-- ICD to DX_ID mappping (KUMC specififc)
+--------------------------------------------------------------------------------
+create table icd_map nologging parallel TABLESPACE COVID as
+select distinct 
+c_basecode dx_id,
+'ICD10CM:' || pcori_basecode icd10
+from "&&crcSchema".pcornet_diag
+where c_basecode like 'KUH|DX_ID%'
+and  pcornet_diag.c_fullname like '\PCORI\DIAGNOSIS\10%'
+and pcori_basecode is not null
+;
 
+create table observation_fact_icd10 nologging parallel TABLESPACE COVID as
+select 
+f.ENCOUNTER_NUM ,
+f.PATIENT_NUM ,
+COALESCE(im.icd10 ,f.CONCEPT_CD ) CONCEPT_CD,
+f.PROVIDER_ID ,
+f.START_DATE ,
+f.MODIFIER_CD ,
+f.INSTANCE_NUM ,
+f.VALTYPE_CD ,
+f.TVAL_CHAR ,
+f.NVAL_NUM ,
+f.VALUEFLAG_CD ,
+f.QUANTITY_NUM ,
+f.UNITS_CD ,
+f.END_DATE ,
+f.LOCATION_CD ,
+f.OBSERVATION_BLOB ,
+f.CONFIDENCE_NUM ,
+f.UPDATE_DATE ,
+f.DOWNLOAD_DATE ,
+f.IMPORT_DATE ,
+f.SOURCESYSTEM_CD ,
+f.UPLOAD_ID ,
+f.SUB_ENCOUNTER  
+from "&&crcSchema".observation_fact f 
+left join icd_map im
+    on f.concept_cd=im.dx_id
+where concept_cd like 'KUH|DX_ID%';
 
+select count(*) from observation_fact_icd10
+where concept_cd not like 'ICD10CM:%';
+--2,018,067 are still in 'KUH|DX_ID%'(about 4% of total)
+select count(*) from observation_fact_icd10
+where concept_cd like 'ICD10CM:%';
+--60,134,064
+
+--------------------------------------------------------------------------------
+-- END ICD to DX_ID mappping (KUMC specififc)
+--------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 -- Code mappings (excluding labs and meds)
 -- * Don't change the "code" value.
@@ -211,15 +281,20 @@ alter table fource_code_map add primary key (code, local_code);
 -- * You can replace this code with external mapping tables of location codes for example a list of hospital units 
 insert into fource_code_map
 	select '', ''  from dual where 1=0
+    union  all select 'inpatient_concept_cd', 'KUH|HOSP_ADT_CLASS:101' from dual
+    union  all select 'inpatient_concept_cd', 'ENC_TYPE:ICU_STAY' from dual
+;
 	-- Inpatient visits (from the visit_dimension.inout_cd field)
-	union all select 'inpatient_inout_cd', 'I' from dual
-    union  all select 'inpatient_inout_cd', 'IN' from dual
+	-- union all select 'inpatient_inout_cd', 'I' from dual
+    -- union  all select 'inpatient_inout_cd', 'IN' from dual
 	-- Inpatient visits (from the visit_dimension.location_cd field) 
     -- copy the line below for each code or location that represents an inpatient 
-	union  all select 'inpatient_location_cd', 'Inpatient' from dual
+	-- union  all select 'inpatient_location_cd', 'Inpatient' from dual
 	-- ICU visits (from the observation_fact.concept_cd field)
     -- copy the line below for each code or location that represents an inpatient 
-	union  all select 'inpatient_concept_cd', 'UMLS:C1547137' from dual;-- from ACT ontology
+	-- union  all select 'inpatient_concept_cd', 'UMLS:C1547137' from dual -- from ACT ontology
+    
+    -- select CONCEPT_CD from  "&&crcSchema".concept_dimension   where CONCEPT_PATH LIKE '\i2b2\Visit Details\ENC_TYPE\IP\%'
 commit;
 
 -- ICU visit codes (optional)
@@ -229,43 +304,50 @@ commit;
 insert into fource_code_map
 	select '', '' from dual where 1=0
 	-- ICU visits (from the visit_dimension.inout_cd field)
-	union all select 'icu_inout_cd', 'ICU' from dual
+	-- union all select 'icu_inout_cd', 'ICU' from dual
 	-- ICU visits (from the visit_dimension.location_cd field)
-	union  all select 'icu_location_cd', 'ICU' from dual
+	-- union  all select 'icu_location_cd', 'ICU' from dual
+    
 	-- ICU visits (from the observation_fact.concept_cd field)
-	union  all select 'icu_concept_cd', 'UMLS:C1547136' from dual-- from ACT ontology
-   	union  all select 'icu_concept_cd', 'CPT4:99291' from dual-- from ACT ontology
-	union  all select 'icu_concept_cd', 'CPT4:99292' from dual-- from ACT ontology
+       select 'icu_concept_cd', 'ENC_TYPE:ICU_STAY' from dual
+	-- union  all select 'icu_concept_cd', 'UMLS:C1547136' from dual -- from ACT ontology
+   	-- union  all select 'icu_concept_cd', 'CPT4:99291' from dual -- from ACT ontology
+	-- union  all select 'icu_concept_cd', 'CPT4:99292' from dual -- from ACT ontology
     -- ICU visits (from the observation_fact.location_cd field)
-	union  all select 'icu_fact_location_cd', 'ICU' from dual
+	-- union  all select 'icu_fact_location_cd', 'ICU' from dual
     -- ICU location_cd in observation_fact selected from external icu map
-    union all select 'icu_fact_location_cd', icu_unit_code from external_icu_map;
+    -- union all select 'icu_fact_location_cd', icu_unit_code from external_icu_map
+;
 --select * from fource_code_map;
 commit;
 
-
 -- If you use location_cd to map ICU  locations you can create a list here or load from an external mapping table
-drop table fource_icu_location;
-create table fource_icu_location as select cast(department_id as varchar2(50)) location_cd from icus;
---create table fource_icu_location as 
---select cast('icu1' as varchar2(50)) as location_cd from dual
---union
---select cast('icu1' as varchar2(50)) as location_cd from dual;
-commit;
-
+--drop table fource_icu_location;
+--create table fource_icu_location as select cast(department_id as varchar2(50)) location_cd from icus;
+create table fource_icu_location as 
+select cast('icu1' as varchar2(50)) as location_cd from dual where 1=0
+union
+select cast('icu1' as varchar2(50)) as location_cd from dual where 1=0;
+--commit;
 -- Sex codes
+-- select distinct sex_cd from "&&crcSchema".patient_dimension;
+-- m, f, u, @
+-- only using obs_fact approach
+-- select concept_cd from  "&&crcSchema".concept_dimension   where concept_path LIKE '\i2b2\Demographics\Gender\Male\%';
+-- select concept_cd from  "&&crcSchema".concept_dimension   where concept_path LIKE '\i2b2\Demographics\Gender\Female\%';
 insert into fource_code_map
 	select '', '' from dual where 1=0
 	-- Sex (from the patient_dimension.sex_cd field)
-	union all select 'sex_patient:male', 'M' from dual
-	union  all select 'sex_patient:male', 'Male' from dual 
-	union  all select 'sex_patient:female', 'F' from dual 
-	union  all select 'sex_patient:female', 'Female' from dual 
+	-- union all select 'sex_patient:male', 'M' from dual
+	-- union  all select 'sex_patient:male', 'Male' from dual 
+	-- union  all select 'sex_patient:female', 'F' from dual 
+	-- union  all select 'sex_patient:female', 'Female' from dual 
 	-- Sex (from the observation_fact.concept_cd field)
-	union  all select 'sex_fact:male', 'DEM|SEX:M' from dual 
-	union  all select 'sex_fact:male', 'DEM|SEX:Male' from dual 
-	union  all select 'sex_fact:female', 'DEM|SEX:F' from dual 
-	union  all select 'sex_fact:female', 'DEM|SEX:Female' from dual; 
+	union  all select 'sex_fact:male', 'DEM|SEX:m' from dual 
+	-- union  all select 'sex_fact:male', 'DEM|SEX:Male' from dual 
+	union  all select 'sex_fact:female', 'DEM|SEX:f' from dual 
+	-- union  all select 'sex_fact:female', 'DEM|SEX:Female' from dual
+; 
 
 -- Race codes (use the code set for your country, comment out other countries)
 insert into fource_code_map
@@ -274,28 +356,42 @@ insert into fource_code_map
 	-- Race: United States
 	-------------------------------------------------------------------
 	-- Race (from the patient _dimension.race_cd field)
-	union all select 'race_patient:american_indian', 'NA' 
-	from dual union  all select 'race_patient:asian', 'A' 
-	from dual union  all select 'race_patient:asian', 'AS' 
-	from dual union  all select 'race_patient:black', 'B' 
-	from dual union  all select 'race_patient:hawaiian_pacific_islander', 'H' 
-	from dual union  all select 'race_patient:hawaiian_pacific_islander', 'P' 
-	from dual union  all select 'race_patient:white', 'W' 
-	from dual union  all select 'race_patient:hispanic_latino', 'HL' 
-	from dual union  all select 'race_patient:other', 'O' -- include multiple if no additional information is known
-	from dual union  all select 'race_patient:no_information', 'NI'  -- unknown, not available, missing, refused to answer, not recorded, etc.
+	 union all select 'race_patient:american_indian', 'amerian ind' 
+	 from dual union  all select 'race_patient:asian', 'asian' 
+	-- from dual union  all select 'race_patient:asian', 'AS' 
+	 from dual union  all select 'race_patient:black', 'black' 
+	 from dual union  all select 'race_patient:hawaiian_pacific_islander', 'pac islander' 
+	-- from dual union  all select 'race_patient:hawaiian_pacific_islander', 'P' 
+	 from dual union  all select 'race_patient:white', 'white' 
+	-- from dual union  all select 'race_patient:hispanic_latino', 'HL' 
+	 from dual union  all select 'race_patient:other', 'two races' -- include multiple if no additional information is known
+     from dual union  all select 'race_patient:other', 'other'     -- include multiple if no additional information is known
+	 from dual union  all select 'race_patient:no_information', 'declined'  -- unknown, not available, missing, refused to answer, not recorded, etc.
+     from dual union  all select 'race_patient:no_information', 'not used'  -- unknown, not available, missing, refused to answer, not recorded, etc.
+     from dual union  all select 'race_patient:no_information', '@'         -- unknown, not available, missing, refused to answer, not recorded, etc.
+     from dual
 	-- Race (from the observation_fact.concept_cd field)
-	from dual union  all select 'race_fact:american_indian', 'DEM|race:NA' 
-	from dual union  all select 'race_fact:asian', 'DEM|race:A' 
-	from dual union  all select 'race_fact:asian', 'DEM|race:AS' 
-	from dual union  all select 'race_fact:black', 'DEM|race:B' 
-	from dual union  all select 'race_fact:hawaiian_pacific_islander', 'DEM|race:H' 
-	from dual union  all select 'race_fact:hawaiian_pacific_islander', 'DEM|race:P' 
-	from dual union  all select 'race_fact:white', 'DEM|race:W' 
-	from dual union  all select 'race_fact:hispanic_latino', 'DEM|HISP:Y' 
-	from dual union  all select 'race_fact:hispanic_latino', 'DEM|HISPANIC:Y' 
-	from dual union  all select 'race_fact:other', 'DEM|race:O'  -- include multiple if no additional information is known
-	from dual union  all select 'race_fact:no_information', 'DEM|race:NI' from dual; -- unknown, not available, missing, refused to answer, not recorded, etc.
+    union  all
+    select 'race_fact:american_indian', 'DEM|RACE:amerian ind' 
+	from dual union  all select 'race_fact:asian', 'DEM|RACE:asian' 
+	-- from dual union  all select 'race_fact:asian', 'DEM|race:AS' 
+	from dual union  all select 'race_fact:black', 'DEM|RACE:black' 
+	from dual union  all select 'race_fact:hawaiian_pacific_islander', 'DEM|RACE:pac islander' 
+	-- from dual union  all select 'race_fact:hawaiian_pacific_islander', 'DEM|race:P' 
+	from dual union  all select 'race_fact:white', 'DEM|RACE:white' 
+	from dual union  all select 'race_fact:hispanic_latino', 'DEM|ETHNICITY:hispanic' 
+	from dual union  all select 'race_fact:hispanic_latino', 'DEM|ETHNICITY:his' 
+	from dual union  all select 'race_fact:other', 'DEM|RACE:other'  -- include multiple if no additional information is known
+    from dual union  all select 'race_fact:other', 'DEM|RACE:two races'
+	from dual union  all select 'race_fact:no_information', 'DEM|RACE:@' -- unknown, not available, missing, refused to answer, not recorded, etc.
+    from dual union  all select 'race_fact:no_information', 'DEM|RACE:d' 
+    from dual union  all select 'race_fact:no_information', 'DEM|RACE:declined' 
+    from dual union  all select 'race_fact:no_information', 'DEM|RACE:deferred'
+    from dual union  all select 'race_fact:no_information', 'DEM|RACE:not used'
+    from dual union  all select 'race_fact:no_information', 'DEM|RACE:unk' 
+    from dual
+;
+commit;
 	-------------------------------------------------------------------
 	-- Race: United Kingdom (Ethnicity)
 	-------------------------------------------------------------------
@@ -329,21 +425,21 @@ insert into fource_code_map
 -- Codes that indicate a COVID-19 nucleic acid test result (use option #1 and/or option #2)
 -- COVID-19 Test Option #1: individual concept_cd values
 
-insert into fource_code_map
-	select 'covidpos', 'LAB|LOINC:COVID19POS' from dual
-	union all
-	select 'covidneg', 'LAB|LOINC:COVID19NEG' from dual;
+--insert into fource_code_map
+--	select 'covidpos', 'LAB|LOINC:COVID19POS' from dual
+--	union all
+--	select 'covidneg', 'LAB|LOINC:COVID19NEG' from dual;
     
 -- COVID-19 Test Option #2: an ontology path (e.g., COVID ACT "Any Positive Test" path)
 insert into fource_code_map
 	select distinct 'covidpos', concept_cd
-		from @crcSchema.concept_dimension c 
+		from "&&crcSchema".concept_dimension c 
 		where concept_path like '\ACT\UMLS_C0031437\SNOMED_3947185011\UMLS_C0022885\UMLS_C1335447\%'
 			and concept_cd is not null
 			and not exists (select * from fource_code_map m where m.code='covidpos' and m.local_code=c.concept_cd)
 	union all
 	select distinct 'covidneg', concept_cd
-		from @crcSchema.concept_dimension c
+		from "&&crcSchema".concept_dimension c
 		where concept_path like '\ACT\UMLS_C0031437\SNOMED_3947185011\UMLS_C0022885\UMLS_C1334932\%'
 			and concept_cd is not null
 			and not exists (select * from fource_code_map m where m.code='covidneg' and m.local_code=c.concept_cd);
@@ -353,8 +449,17 @@ insert into fource_code_map
 		from fource_config
 	union all
 	select 'covidU071', code_prefix_icd10cm || 'U071' --place holder
-		from fource_config;
+		from fource_config
+;
+--TODO: is below childs of u071 are neededed
+insert into fource_code_map
+    select 'covidU071', concept_cd from  "&&crcSchema".concept_dimension c
+    where concept_path LIKE '\ACT\UMLS_C0031437\SNOMED_3947185011\UMLS_C0037088\SNOMED_3947183016\ICD10CM_U07.1\%'
+        and not exists (select * from fource_code_map m where m.code='covidU071' and m.local_code=c.concept_cd)
+
+;
 commit;
+
 --------------------------------------------------------------------------------
 -- Lab mappings
 -- * Do not change the fource_* columns.
@@ -369,7 +474,9 @@ commit;
 -- *   (e.g., see PaO2). Only use this if you are sure what the units are.
 -- *   Add what you think the true units are to the end of the local_lab_name.
 --------------------------------------------------------------------------------
---DROP TABLE fource_lab_map;
+WHENEVER SQLERROR CONTINUE;
+DROP TABLE fource_lab_map;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 create table fource_lab_map (
 	fource_loinc varchar(20) not null, 
 	fource_lab_units varchar(20) not null, 
@@ -384,35 +491,40 @@ alter table fource_lab_map add primary key (fource_loinc, local_lab_code, local_
 insert into fource_lab_map
 	select fource_loinc, fource_lab_units, fource_lab_name,
 		scale_factor,
-		'LOINC:' || local_lab_code,  -- Change "LOINC:" to your local LOINC code prefix (scheme)
+		'KUH|COMPONENT_ID:' || local_lab_code,  -- Change "LOINC:" to your local LOINC code prefix (scheme)
 		local_lab_units, local_lab_name
 	from (
 		select null fource_loinc, null fource_lab_units, null fource_lab_name, 
 				null scale_factor, null local_lab_code, null local_lab_units, null local_lab_name from dual
 			where 1=0
-		union select '1742-6', 'U/L', 'alanine aminotransferase (ALT)', 1, '1742-6', 'U/L', 'YourLocalLabName' 
-		from dual union select '1751-7', 'g/dL', 'albumin', 1, '1751-7', 'g/dL', 'YourLocalLabName' 
-		from dual union  select '1920-8', 'U/L', 'aspartate aminotransferase (AST)', 1, '1920-8', 'U/L', 'YourLocalLabName' 
-		from dual union  select '1975-2', 'mg/dL', 'total bilirubin', 1, '1975-2', 'mg/dL', 'YourLocalLabName' 
-		from dual union  select '1988-5', 'mg/L', 'C-reactive protein (CRP) (Normal Sensitivity)', 1, '1988-5', 'mg/L', 'YourLocalLabName' 
-		from dual union  select '2019-8', 'mmHg', 'PaCO2', 1, '2019-8', 'mmHg', 'YourLocalLabName' 
-		from dual union  select '2160-0', 'mg/dL', 'creatinine', 1, '2160-0', 'mg/dL', 'YourLocalLabName' 
-		from dual union  select '2276-4', 'ng/mL', 'Ferritin', 1, '2276-4', 'ng/mL', 'YourLocalLabName' 
-		from dual union  select '2532-0', 'U/L', 'lactate dehydrogenase (LDH)', 1, '2532-0', 'U/L', 'YourLocalLabName' 
-		from dual union  select '2703-7', 'mmHg', 'PaO2', 1, '2703-7', 'mmHg', 'YourLocalLabName' 
-		from dual union  select '3255-7', 'mg/dL', 'Fibrinogen', 1, '3255-7', 'mg/dL', 'YourLocalLabName' 
-		from dual union  select '33959-8', 'ng/mL', 'procalcitonin', 1, '33959-8', 'ng/mL', 'YourLocalLabName' 
-		from dual union  select '48065-7', 'ng/mL{FEU}', 'D-dimer (FEU)', 1, '48065-7', 'ng/mL{FEU}', 'YourLocalLabName' 
-		from dual union  select '48066-5', 'ng/mL{DDU}', 'D-dimer (DDU)', 1, '48066-5', 'ng/mL{DDU}', 'YourLocalLabName' 
-		from dual union  select '49563-0', 'ng/mL', 'cardiac troponin (High Sensitivity)', 1, '49563-0', 'ng/mL', 'YourLocalLabName' 
-		from dual union  select '6598-7', 'ug/L', 'cardiac troponin (Normal Sensitivity)', 1, '6598-7', 'ug/L', 'YourLocalLabName' 
-		from dual union  select '5902-2', 's', 'prothrombin time (PT)', 1, '5902-2', 's', 'YourLocalLabName' 
-		from dual union  select '6690-2', '10*3/uL', 'white blood cell count (Leukocytes)', 1, '6690-2', '10*3/uL', 'YourLocalLabName' 
-		from dual union  select '731-0', '10*3/uL', 'lymphocyte count', 1, '731-0', '10*3/uL', 'YourLocalLabName'
-		from dual union select '751-8', '10*3/uL', 'neutrophil count', 1, '751-8', '10*3/uL', 'YourLocalLabName'
-		from dual union select '777-3', '10*3/uL', 'platelet count', 1, '777-3', '10*3/uL', 'YourLocalLabName'
-		from dual union select '34714-6', 'DEFAULT', 'INR', 1, '34714-6', 'DEFAULT', 'YourLocalLabName' from dual
-
+        -- TODO: add propar labname
+		union            select '1742-6',  'U/L',        'alanine aminotransferase (ALT)',                1, '2065',    'U/L',        'YourLocalLabName' 
+		from dual union  select '1751-7',  'g/dL',       'albumin',                                       1, '2023',    'g/dL',       'YourLocalLabName' 
+		from dual union  select '1920-8',  'U/L',        'aspartate aminotransferase (AST)',              1, '2064',    'U/L',        'YourLocalLabName' 
+		from dual union  select '1975-2',  'mg/dL',      'total bilirubin',                               1, '2024',    'mg/dL',      'YourLocalLabName' 
+		from dual union  select '1988-5',  'mg/L',       'C-reactive protein (CRP) (Normal Sensitivity)', 1, '3186',    'mg/L',       'YourLocalLabName' 
+		from dual union  select '2019-8',  'mmHg',       'PaCO2',                                         1, '4003',    'mmHg',       'YourLocalLabName' 
+        from dual union  select '2019-8',  'mmHg',       'PaCO2',                                         1, '4004',    'mmHg',       'YourLocalLabName'
+		from dual union  select '2160-0',  'mg/dL',      'creatinine',                                    1, '2009',    'mg/dL',      'YourLocalLabName' 
+		from dual union  select '2276-4',  'ng/mL',      'Ferritin',                                      1, '3176',    'ng/mL',      'YourLocalLabName' 
+		from dual union  select '2532-0',  'U/L',        'lactate dehydrogenase (LDH)',                   1, '2070',    'U/L',        'YourLocalLabName' 
+		from dual union  select '2703-7',  'mmHg',       'PaO2',                                          1, '4005',    'mmHg',       'YourLocalLabName' 
+        from dual union  select '2703-7',  'mmHg',       'PaO2',                                          1, '4006',    'mmHg',       'YourLocalLabName' 
+		from dual union  select '3255-7',  'mg/dL',      'Fibrinogen',                                    1, '3093',    'mg/dL',      'YourLocalLabName' 
+		from dual union  select '33959-8', 'ng/mL',      'procalcitonin',                                 1, '664',     'ng/mL',      'YourLocalLabName' 
+		from dual union  select '48065-7', 'ng/mL{FEU}', 'D-dimer (FEU)',                                 1, '3094',    'ng/mL{FEU}',  'YourLocalLabName' --ng/mL FEU is changed to ng/mL{FEU} when creating observation_fact_lab from observation_fact
+--		from dual union  select '48066-5', 'ng/mL{DDU}', 'D-dimer (DDU)',                                 1, '48066-5', 'ng/mL FEU', ' YourLocalLabName' 
+		from dual union  select '49563-0', 'ng/mL',      'cardiac troponin (High Sensitivity)',           1, '2326',    'ng/mL',      'YourLocalLabName' 
+        from dual union  select '49563-0', 'ng/mL',      'cardiac troponin (High Sensitivity)',           1, '2327',    'ng/mL',      'YourLocalLabName'
+--		from dual union  select '6598-7',  'ug/L',       'cardiac troponin (Normal Sensitivity)',         1, '2328',     'ug/L',      'YourLocalLabName' 
+--		from dual union  select '5902-2',  's',          'prothrombin time (PT)',                         1, '5902-2',   's',         'YourLocalLabName' 
+		from dual union  select '6690-2',  '10*3/uL',    'white blood cell count (Leukocytes)',           1, '3009',    '10*3/uL',    'YourLocalLabName' 
+		from dual union  select '731-0',   '10*3/uL',    'lymphocyte count',                              1, '3016',    '10*3/uL',    'YourLocalLabName'
+		from dual union select  '751-8',   '10*3/uL',    'neutrophil count',                              1, '3012',    '10*3/uL',    'YourLocalLabName'
+--		from dual union select  '777-3',   '10*3/uL',    'platelet count',                                1, '777-3',    '10*3/uL',   'YourLocalLabName'
+--		from dual union select  '34714-6', 'DEFAULT',    'INR',                                           1, '34714-6',  'DEFAULT',   'YourLocalLabName' 
+        from dual
+	) ;
 		--Example of listing an additional code for the same lab
 		--from dual union select '2019-8', 'mmHg', 'PaCO2', 1, 'LAB:PaCO2', 'mmHg', 'Carbon dioxide partial pressure in arterial blood'
 		--Examples of listing different units for the same lab
@@ -420,9 +532,9 @@ insert into fource_lab_map
 		--from dual union select '2703-7', 'mmHg', 'PaO2', 25.4, '2703-7', 'inHg', 'PaO2'
 		--This will use the given scale factor (in this case 1) for any lab with NULL or empty string units 
 		--from dual union select '2703-7', 'mmHg', 'PaO2', 1, '2703-7', 'DEFAULT', 'PaO2 [mmHg]'
-	) t;
 commit;
 
+-- TODO: add more labs
 -- Use the concept_dimension table to get an expanded list of local lab codes (optional).
 -- This will find paths corresponding to concepts already in the fource_lab_map table,
 -- and then find all the concepts corresponding to child paths. Make sure you update the
@@ -433,9 +545,9 @@ commit;
 insert into fource_lab_map
 	select distinct l.fource_loinc, l.fource_lab_units, l.fource_lab_name, l.scale_factor, d.concept_cd, l.local_lab_units, l.local_lab_name
 	from fource_lab_map l
-		inner join @crcSchema.concept_dimension c
+		inner join "&&crcSchema".concept_dimension c
 			on l.local_lab_code = c.concept_cd
-		inner join @crcSchema.concept_dimension d
+		inner join "&&crcSchema".concept_dimension d
 			on d.concept_path like c.concept_path || '%'
 	where not exists (
 		select *
@@ -449,14 +561,81 @@ insert into fource_lab_map
 update l
 	set l.local_lab_name = c.name_char
 	from fource_lab_map l
-		inner join @crcSchema.concept_dimension c
+		inner join "&&crcSchema".concept_dimension c
 			on l.local_lab_code = c.concept_cd
 */
+--------------------------------------------------------------------------------
+-- KUMC specific: 4ce observation_fact for lab
+--------------------------------------------------------------------------------
+drop table observation_fact_lab;
+create table observation_fact_lab nologging parallel as
+select
+ENCOUNTER_NUM , PATIENT_NUM , CONCEPT_CD , PROVIDER_ID , START_DATE , MODIFIER_CD , INSTANCE_NUM , VALTYPE_CD , TVAL_CHAR ,
+NVAL_NUM , VALUEFLAG_CD , QUANTITY_NUM , labm.fource_lab_units UNITS_CD , END_DATE , LOCATION_CD , CONFIDENCE_NUM , UPDATE_DATE ,
+DOWNLOAD_DATE , IMPORT_DATE , SOURCESYSTEM_CD , UPLOAD_ID , SUB_ENCOUNTER 
+from "&&crcSchema".observation_fact f
+join fource_lab_map labm
+    on  f.concept_cd = labm.local_lab_code
+    and lower(f.units_cd) = lower(labm.local_lab_units)
+and f.concept_cd not in ( 'KUH|COMPONENT_ID:3094' )
+union
+select
+ENCOUNTER_NUM , PATIENT_NUM , CONCEPT_CD , PROVIDER_ID , START_DATE , MODIFIER_CD , INSTANCE_NUM , VALTYPE_CD , TVAL_CHAR ,
+NVAL_NUM , VALUEFLAG_CD , QUANTITY_NUM ,          'ng/mL{FEU}' UNITS_CD , END_DATE , LOCATION_CD ,  CONFIDENCE_NUM , UPDATE_DATE ,
+DOWNLOAD_DATE , IMPORT_DATE , SOURCESYSTEM_CD , UPLOAD_ID , SUB_ENCOUNTER 
+from "&&crcSchema".observation_fact f
+where  f.concept_cd = 'KUH|COMPONENT_ID:3094'  and lower(f.units_cd) = 'ng/ml feu';
+
+
+select
+concept_cd,units_cd, count(*) 
+from observation_fact_lab
+where concept_cd in ( 'KUH|COMPONENT_ID:3094' )
+group by  concept_cd,units_cd
+;
+/*
+-- TODO: Create observation_fact_lab which has ALL KUH|COMPONENT_ID map to LOINC and in a single unit. not just where units are matched like in above sql
+1. create observation_fact_lab with needed loinc and component
+2. create LOINC & LOINC_UNIT to COMPONENET & COMPONENET_UNIT
+
+
+with loinc_units_local_lab_units as (
+    select m.fource_loinc, m.fource_lab_units, u.*
+    from fource_lab_units_facts u
+    join fource_lab_map m
+        on u.fact_code = m.local_lab_code
+    where u.num_facts >= 100
+    order by m.fource_loinc, u.fact_code, u.num_facts DESC, u.fact_units
+)
+, same_units as (
+    select * from loinc_units_local_lab_units
+    where upper(fource_lab_units)=upper(fact_units)
+)
+, not_a_single_match_unit as (
+    select distinct fource_loinc from fource_lab_map where fource_loinc not in (select distinct fource_loinc  from same_units)
+)
+select * from observation_fact_lab fl
+;
+*/
+--------------------------------------------------------------------------------
+-- END KUMC Specific
+--------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- Lab mappings report (for debugging lab mappings)
 --------------------------------------------------------------------------------
+/*
+for testing this section
+
+select * from fource_lab_map;
+*/
 -- Get a list of all the codes and units in the data for 4CE labs since 1/1/2019
+WHENEVER SQLERROR CONTINUE;
+DROP TABLE fource_lab_units_facts;
+drop index fource_lap_map_ndx;
+drop table fource_lab_map_report;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+
 create table fource_lab_units_facts (
 	fact_code varchar(50) not null,
 	fact_units varchar(50),
@@ -467,11 +646,12 @@ create table fource_lab_units_facts (
 
 --188s
 create index fource_lap_map_ndx on fource_lab_map(local_lab_code);
-insert into fource_lab_units_facts
+
+insert /*+ APPEND */ into fource_lab_units_facts
 select * from (
 with labs_in_period as (
 select concept_cd, units_cd, nval_num
-	from @crcSchema.observation_fact f
+	from observation_fact_lab f
     join fource_lab_map m  on m.local_lab_code = f.concept_cd 
 	where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 )
@@ -479,11 +659,28 @@ select concept_cd, units_cd, count(*) num_facts, avg(nval_num) avg_val, stddev(n
 from labs_in_period
 group by concept_cd, units_cd);
 commit;
+
+-- stop running further if one lab has more than 1 unit.
+with labs_with_gt1_units as
+(
+select fact_code, fact_units
+from fource_lab_units_facts
+group by fact_code, fact_units
+having count(*)>1
+)
+select 
+case 
+    when count(*) = 0 then 0 
+    else 1/0 --one lab has more than 1 units
+END any_lab_has_more_than_1_units
+from labs_with_gt1_units;
+
+
 --select * from fource_lab_units_facts;
 /*
 insert into fource_lab_units_facts
 	select concept_cd, units_cd, count(*), avg(nval_num), stddev(nval_num)
-	from @crcSchema.observation_fact f
+	from "&&crcSchema".observation_fact f
     join fource_lab_map m  on m.local_lab_code = f.concept_cd 
 	where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 	group by concept_cd, units_cd;
@@ -551,7 +748,12 @@ select * from fource_lab_map_report order by fource_loinc, num_facts desc
 -- * The ATC and RxNorm codes represent the same list of medications.
 -- * Use ATC and/or RxNorm, depending on what your institution uses.
 --------------------------------------------------------------------------------
---drop table fource_med_map;
+WHENEVER SQLERROR CONTINUE;
+drop table fource_med_map;
+drop table fource_med_map_childs_code;
+drop table fource_med_map_childs;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+
 create table fource_med_map (
 	med_class varchar(50) not null,
 	code_type varchar(10) not null,
@@ -561,60 +763,60 @@ create table fource_med_map (
 alter table fource_med_map add primary key (med_class, code_type, local_med_code);
 
 -- ATC codes (optional)
-insert into fource_med_map
-	select m, 'ATC' t, 'ATC:' || c  -- Change "ATC:" to your local ATC code prefix (scheme)
-	from (
-		-- Don't add or remove drugs
-		select 'ACEI' m, c from (select 'C09AA01' c from dual union select 'C09AA02' from dual union select 'C09AA03' from dual 
-            union select 'C09AA04' from dual union select 'C09AA05' from dual union select 'C09AA06' from dual union select 'C09AA07' from dual 
-            union select 'C09AA08' from dual union select 'C09AA09' from dual union select 'C09AA10' from dual union select 'C09AA11' from dual 
-            union select 'C09AA13' from dual union select 'C09AA15' from dual union select 'C09AA16' from dual) t
-		union 
-        select 'ARB', c from (select 'C09CA01' c from dual union select 'C09CA02' from dual union select 'C09CA03' from dual 
-            union select 'C09CA04' from dual union select 'C09CA06' from dual union select 'C09CA07' from dual 
-            union select 'C09CA08' from dual) t
-		union 
-        select 'COAGA', c from (select 'B01AC04' c from dual union select 'B01AC05' from dual union select 'B01AC07' from dual 
-            union select 'B01AC10' from dual union select 'B01AC13' from dual union select 'B01AC16' from dual 
-            union select 'B01AC17' from dual union select 'B01AC22' from dual union select 'B01AC24' from dual 
-            union select 'B01AC25' from dual union select 'B01AC26' from dual) t
-		union 
-        select 'COAGB', c from (select 'B01AA01' c from dual union select 'B01AA03' from dual 
-            union select 'B01AA04' from dual union select 'B01AA07' from dual 
-            union select 'B01AA11' from dual union select 'B01AB01' from dual 
-            union select 'B01AB04' from dual union select 'B01AB05' from dual 
-            union select 'B01AB06' from dual union select 'B01AB07' from dual 
-            union select 'B01AB08' from dual union select 'B01AB10' from dual 
-            union select 'B01AB12' from dual union select 'B01AE01' from dual 
-            union select 'B01AE02' from dual union select 'B01AE03' from dual 
-            union select 'B01AE06' from dual union select 'B01AE07' from dual 
-            union select 'B01AF01' from dual union select 'B01AF02' from dual 
-            union select 'B01AF03' from dual union select 'B01AF04' from dual 
-            union select 'B01AX05' from dual union select 'B01AX07' from dual) t
-		union 
-        select 'COVIDVIRAL', c from (select 'J05AE10' c from dual union select 'J05AP01' from dual union select 'J05AR10' from dual) t
-		union 
-        select 'DIURETIC', c from (select 'C03CA01' c from dual union select 'C03CA02' from dual 
-            union select 'C03CA03' from dual union select 'C03CA04' from dual 
-            union select 'C03CB01' from dual union select 'C03CB02' from dual union select 'C03CC01' from dual) t
-        union 
-        select 'HCQ', c from (select 'P01BA01' c from dual union select 'P01BA02' from dual) t
-		union 
-        select 'ILI', c from (select 'L04AC03' c from dual union select 'L04AC07' from dual 
-            union select 'L04AC11' from dual union select 'L04AC14' from dual) t
-		union 
-        select 'INTERFERON', c from (select 'L03AB08' c from dual union select 'L03AB11' from dual) t
-		union 
-        select 'SIANES', c from (select 'M03AC03' c from dual union select 'M03AC09' from dual 
-            union select 'M03AC11' from dual union select 'N01AX03' from dual 
-            union select 'N01AX10' from dual union select 'N05CD08' from dual union select 'N05CM18' from dual) t
-		union 
-        select 'SICARDIAC', c from (select 'B01AC09' c from dual union select 'C01CA03' from dual 
-            union select 'C01CA04' from dual union select 'C01CA06' from dual union select 'C01CA07' from dual 
-            union select 'C01CA24' from dual union select 'C01CE02' from dual union select 'C01CX09' from dual 
-            union select 'H01BA01' from dual union select 'R07AX01' from dual) t
-	) t;
-commit;
+--insert into fource_med_map
+--	select m, 'ATC' t, 'ATC:' || c  -- Change "ATC:" to your local ATC code prefix (scheme)
+--	from (
+--		-- Don't add or remove drugs
+--		select 'ACEI' m, c from (select 'C09AA01' c from dual union select 'C09AA02' from dual union select 'C09AA03' from dual 
+--            union select 'C09AA04' from dual union select 'C09AA05' from dual union select 'C09AA06' from dual union select 'C09AA07' from dual 
+--            union select 'C09AA08' from dual union select 'C09AA09' from dual union select 'C09AA10' from dual union select 'C09AA11' from dual 
+--            union select 'C09AA13' from dual union select 'C09AA15' from dual union select 'C09AA16' from dual) t
+--		union 
+--        select 'ARB', c from (select 'C09CA01' c from dual union select 'C09CA02' from dual union select 'C09CA03' from dual 
+--            union select 'C09CA04' from dual union select 'C09CA06' from dual union select 'C09CA07' from dual 
+--            union select 'C09CA08' from dual) t
+--		union 
+--        select 'COAGA', c from (select 'B01AC04' c from dual union select 'B01AC05' from dual union select 'B01AC07' from dual 
+--            union select 'B01AC10' from dual union select 'B01AC13' from dual union select 'B01AC16' from dual 
+--            union select 'B01AC17' from dual union select 'B01AC22' from dual union select 'B01AC24' from dual 
+--            union select 'B01AC25' from dual union select 'B01AC26' from dual) t
+--		union 
+--        select 'COAGB', c from (select 'B01AA01' c from dual union select 'B01AA03' from dual 
+--            union select 'B01AA04' from dual union select 'B01AA07' from dual 
+--            union select 'B01AA11' from dual union select 'B01AB01' from dual 
+--            union select 'B01AB04' from dual union select 'B01AB05' from dual 
+--            union select 'B01AB06' from dual union select 'B01AB07' from dual 
+--            union select 'B01AB08' from dual union select 'B01AB10' from dual 
+--            union select 'B01AB12' from dual union select 'B01AE01' from dual 
+--            union select 'B01AE02' from dual union select 'B01AE03' from dual 
+--            union select 'B01AE06' from dual union select 'B01AE07' from dual 
+--            union select 'B01AF01' from dual union select 'B01AF02' from dual 
+--            union select 'B01AF03' from dual union select 'B01AF04' from dual 
+--            union select 'B01AX05' from dual union select 'B01AX07' from dual) t
+--		union 
+--        select 'COVIDVIRAL', c from (select 'J05AE10' c from dual union select 'J05AP01' from dual union select 'J05AR10' from dual) t
+--		union 
+--        select 'DIURETIC', c from (select 'C03CA01' c from dual union select 'C03CA02' from dual 
+--            union select 'C03CA03' from dual union select 'C03CA04' from dual 
+--            union select 'C03CB01' from dual union select 'C03CB02' from dual union select 'C03CC01' from dual) t
+--        union 
+--        select 'HCQ', c from (select 'P01BA01' c from dual union select 'P01BA02' from dual) t
+--		union 
+--        select 'ILI', c from (select 'L04AC03' c from dual union select 'L04AC07' from dual 
+--            union select 'L04AC11' from dual union select 'L04AC14' from dual) t
+--		union 
+--        select 'INTERFERON', c from (select 'L03AB08' c from dual union select 'L03AB11' from dual) t
+--		union 
+--        select 'SIANES', c from (select 'M03AC03' c from dual union select 'M03AC09' from dual 
+--            union select 'M03AC11' from dual union select 'N01AX03' from dual 
+--            union select 'N01AX10' from dual union select 'N05CD08' from dual union select 'N05CM18' from dual) t
+--		union 
+--        select 'SICARDIAC', c from (select 'B01AC09' c from dual union select 'C01CA03' from dual 
+--            union select 'C01CA04' from dual union select 'C01CA06' from dual union select 'C01CA07' from dual 
+--            union select 'C01CA24' from dual union select 'C01CE02' from dual union select 'C01CX09' from dual 
+--            union select 'H01BA01' from dual union select 'R07AX01' from dual) t
+--	) t;
+--commit;
 
 -- RxNorm codes (optional)
 insert into fource_med_map
@@ -1942,12 +2144,13 @@ union select 'SICARDIAC' m, c from
 	union select '891438' from dual) t
 	) t;
 commit;
+-- TODO: Bring Remdesivir to HERON as they are not brought to heron from clairty.
 -- Remdesivir defined separately since many sites will have custom codes (optional)
-insert into fource_med_map
-	select 'REMDESIVIR', 'RxNorm', 'RxNorm:2284718' from dual
-	union select 'REMDESIVIR', 'RxNorm', 'RxNorm:2284960' from dual
-	union select 'REMDESIVIR', 'Custom', 'ACT|LOCAL:REMDESIVIR' from dual;
-commit;
+--insert into fource_med_map
+--	select 'REMDESIVIR', 'RxNorm', 'RxNorm:2284718' from dual
+--	union select 'REMDESIVIR', 'RxNorm', 'RxNorm:2284960' from dual
+--	union select 'REMDESIVIR', 'Custom', 'ACT|LOCAL:REMDESIVIR' from dual;
+--commit;
 -- Use the concept_dimension to get an expanded list of medication codes (optional)
 -- This will find paths corresponding to concepts already in the fource_med_map table,
 -- and then find all the concepts corresponding to child paths.
@@ -1956,14 +2159,14 @@ commit;
 /*
 select concept_path, concept_cd
 	into #med_paths
-	from @crcSchema.concept_dimension
+	from "&&crcSchema".concept_dimension
 	where concept_path like '\ACT\Medications\%'
-		and concept_cd in (select concept_cd from @crcSchema.observation_fact --with (nolock)) 
+		and concept_cd in (select concept_cd from "&&crcSchema".observation_fact --with (nolock)) 
 ; alter table #med_paths add primary key (concept_path)
 ; insert into fource_med_map
 	select distinct m.med_class, 'Expand', d.concept_cd
 	from fource_med_map m
-		inner join @crcSchema.concept_dimension c
+		inner join "&&crcSchema".concept_dimension c
 			on m.local_med_code = c.concept_cd
 		inner join #med_paths d
 			on d.concept_path like c.concept_path || '%'
@@ -1973,11 +2176,59 @@ select concept_path, concept_cd
 		where t.med_class = m.med_class and t.local_med_code = d.concept_cd
 	)
 */
+--------------------------------------------------------------------------------
+-- KUMC specific get childs(med_id?) on rxnorm
+--------------------------------------------------------------------------------
+--get path of rxnorm's childeren
+create table fource_med_map_childs_code nologging parallel as
+with rxnorm_children_concept_path as (
+    select concept_cd rxnorm,concept_path from "&&crcSchema".concept_dimension
+    where concept_cd in (select local_med_code from fource_med_map)
+)
+select 
+distinct --get concept_cd, med_class and code_type of rxnorm's childeren
+rx_ch.rxnorm,
+cdim.concept_cd rxnorm_child_concept_cd
+from "&&crcSchema".concept_dimension cdim
+join rxnorm_children_concept_path rx_ch
+    on cdim.concept_path like rx_ch.concept_path || '%'
+;
+
+
+create table fource_med_map_childs nologging parallel as
+select 
+distinct
+fmm.med_class,
+fmm.code_type,
+fmmcc.rxnorm_child_concept_cd
+from fource_med_map_childs_code fmmcc
+join fource_med_map fmm
+    on fmm.local_med_code=fmmcc.rxnorm
+;
+
+--get med_class and code_type of rxnorm's childeren
+insert /*+ APPEND */ into fource_med_map
+select *
+from fource_med_map_childs m
+where not exists (
+    select *
+    from fource_med_map t
+    where t.med_class = m.med_class and t.local_med_code = m.rxnorm_child_concept_cd
+)
+;
+commit;
+--------------------------------------------------------------------------------
+-- END KUMC specific get childs(med_id?) on rxnorm
+--------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- Procedure mappings
 -- * Do not change the proc_group or add additional procedures.
 --------------------------------------------------------------------------------
+WHENEVER SQLERROR CONTINUE;
+drop table fource_proc_map;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+
 create table fource_proc_map (
 	proc_group varchar(50) not null,
 	code_type varchar(10) not null,
@@ -1987,7 +2238,7 @@ alter table fource_proc_map add primary key (proc_group, code_type, local_proc_c
 
 -- CPT4 (United States)
 insert into fource_proc_map
-	select p, 'CPT4', 'CPT4:' || c  -- Change "CPT4:" to your local RxNorm code prefix (scheme)
+	select p, 'CPT4', 'CPT:' || c  -- Change "CPT4:" to your local RxNorm code prefix (scheme)
 	from (
 		select '' p, '' c from dual where 1=0
 		union all select 'EmergencyGeneralSurgery', c from (select '44970' c from dual union select '47562' from dual 
@@ -2016,6 +2267,7 @@ insert into fource_proc_map
             union select '91301' from dual union select '91302' from dual union select '91303' from dual) t
 	) t;
 commit;
+/*
 -- CCAM (France)
 insert into fource_proc_map
 	select p, 'CCAM', 'CCAM:' || c  -- Change "CCAM:" to your local RxNorm code prefix (scheme)
@@ -2146,10 +2398,10 @@ insert into fource_proc_map
             union select '40202445' from dual) t
 		union all select 'Bronchoscopy', c from (select '40201058' c from dual) t
 	) t;
-
+*/
 -- ICD9Proc
 insert into fource_proc_map
-	select p, 'ICD9', 'ICD9PROC:' || c  -- Change "ICD9:" to your local RxNorm code prefix (scheme)
+	select p, 'ICD9', 'ICD9:' || c  -- Change "ICD9:" to your local RxNorm code prefix (scheme)
 	from (
 		select '' p, '' c from dual where 1=0
 		union all select 'EmergencyGeneralSurgery', c from (select '47.01' c from dual union select '51.23' from dual 
@@ -2173,7 +2425,7 @@ insert into fource_proc_map
 commit;
 -- ICD10-PCS
 insert into fource_proc_map
-	select p, 'ICD10', 'ICD10PCS:' || c  -- Change "ICD10:" to your local RxNorm code prefix (scheme)
+	select p, 'ICD10', 'ICD10:' || c  -- Change "ICD10:" to your local RxNorm code prefix (scheme)
 	from (
 		select '' p, '' c  from dual where 1=0
 		union all select 'EmergencyGeneralSurgery', c from (select '0DBJ4ZZ' c from dual union select '0DTJ4ZZ' from dual 
@@ -2189,6 +2441,7 @@ insert into fource_proc_map
 		union all select 'CTChest', c from (select 'BW24' c from dual union select 'BW24Y0Z' from dual union select 'BW24YZZ' from dual) t
 	) t;
 commit;
+/*
 -- SNOMED
 insert into fource_proc_map
 	select p, 'SNOMED', 'SNOMED:' || c  -- Change "SNOMED:" to your local RxNorm code prefix (scheme)
@@ -2217,6 +2470,7 @@ insert into fource_proc_map
 		union all select 'Bronchoscopy', c from (select '10847001' c from dual union select '68187007' from dual) t
 	) t;
 commit;
+*/
 -- Use the concept_dimension to get an expanded list of medication codes (optional)
 -- This will find paths corresponding to concepts already in the fource_med_map table,
 -- and then find all the concepts corresponding to child paths.
@@ -2225,14 +2479,14 @@ commit;
 /* 
 select concept_path, concept_cd
 	into #med_paths
-	from @crcSchema.concept_dimension
+	from "&&crcSchema".concept_dimension
 	where concept_path like '\ACT\Medications\%'
-		and concept_cd in (select concept_cd from @crcSchema.observation_fact --with (nolock)) 
+		and concept_cd in (select concept_cd from "&&crcSchema".observation_fact --with (nolock)) 
 ; alter table #med_paths add primary key (concept_path)
 ; insert into fource_med_map
 	select distinct m.med_class, 'Expand', d.concept_cd
 	from fource_med_map m
-		inner join @crcSchema.concept_dimension c
+		inner join "&&crcSchema".concept_dimension c
 			on m.local_med_code = c.concept_cd
 		inner join #med_paths d
 			on d.concept_path like c.concept_path || '%'
@@ -2244,11 +2498,44 @@ select concept_path, concept_cd
 */
 
 --------------------------------------------------------------------------------
+-- start KUMC specific get childs for  proc
+--------------------------------------------------------------------------------
+select substr(concept_cd,1,instr(concept_cd,':')-1), count(*)
+from  "&&crcSchema".CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\C4\%'
+group by substr(concept_cd,1,instr(concept_cd,':')-1)
+union all
+select substr(concept_cd,1,instr(concept_cd,':')-1), count(*)
+from  "&&crcSchema".CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\10\%'
+group by substr(concept_cd,1,instr(concept_cd,':')-1)
+union all
+select substr(concept_cd,1,instr(concept_cd,':')-1), count(*)
+from  "&&crcSchema".CONCEPT_DIMENSION   where concept_path LIKE '\PCORI\PROCEDURE\09\%'
+group by substr(concept_cd,1,instr(concept_cd,':')-1)
+;
+/*
+CPT	13551
+ICD10	178189
+ICD9	4664
+*/
+--now 4ce local_proc_code matches to HERON
+select distinct substr(local_proc_code,1,instr(local_proc_code,':')-1) code from fource_proc_map order by code;
+/*
+CPT
+ICD10
+ICD9
+*/
+--------------------------------------------------------------------------------
+-- END KUMC specific get childs for  proc
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- Multisystem Inflammatory Syndrome in Children (MIS-C) (optional)
 -- * Write a custom query to populate this table with the patient_num's of
 -- * children who develop MIS-C and their first MIS-C diagnosis date.
 --------------------------------------------------------------------------------
+-- TODO by LP: participate in MISC
+WHENEVER SQLERROR CONTINUE;
 drop table fource_misc;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 create table fource_misc (
 	patient_num int not null,
 	misc_date date not null
@@ -2268,6 +2555,9 @@ commit;
 -- * Modify this table only if you are working on a specific project that
 -- * has defined custom patient cohorts to analyze.
 --------------------------------------------------------------------------------
+WHENEVER SQLERROR CONTINUE;
+drop table fource_cohort_config;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 create table fource_cohort_config (
 	cohort varchar(50) not null,
 	include_in_phase1 int, -- 1 = include the cohort in the phase 1 output, otherwise 0
@@ -2280,20 +2570,57 @@ create table fource_cohort_config (
 alter table fource_cohort_config add primary key (cohort);
 
 insert into fource_cohort_config
-	select 'PosAdm2020Q1', 1, 1, NULL, '01-JAN-2020', '31-MAR-2020' from dual
-	union all select 'PosAdm2020Q2', 1, 1, NULL, '01-APR-2020', '30-JUN-2020' from dual
-	union all select 'PosAdm2020Q3', 1, 1, NULL, '01-JUL-2020', '30-SEP-2020' from dual
-	union all select 'PosAdm2020Q4', 1, 1, NULL, '01-OCT-2020', '31-DEC-2020' from dual
-	union all select 'PosAdm2021Q1', 1, 1, NULL, '01-JAN-2021', '31-MAR-2021' from dual
-	union all select 'PosAdm2021Q2', 1, 1, NULL, '01-APR-2021', '30-JUN-2021' from dual
-	union all select 'PosAdm2021Q3', 1, 1, NULL, '01-JUL-2021', '30-SEP-2021' from dual
-	union all select 'PosAdm2021Q4', 1, 1, NULL, '01-OCT-2021', '31-DEC-2021' from dual;
+	select           'PosAdm2020Q1', 1, 1, NULL, to_date('2020-01-01 00:00:00'),to_date('2020-03-31 00:00:00') from dual -- '01-JAN-2020', '31-MAR-2020' 
+	union all select 'PosAdm2020Q2', 1, 1, NULL, to_date('2020-04-01 00:00:00'),to_date('2020-06-30 00:00:00') from dual -- '01-APR-2020', '30-JUN-2020'
+	union all select 'PosAdm2020Q3', 1, 1, NULL, to_date('2020-07-01 00:00:00'),to_date('2020-09-30 00:00:00') from dual -- '01-JUL-2020', '30-SEP-2020'
+	union all select 'PosAdm2020Q4', 1, 1, NULL, to_date('2020-10-01 00:00:00'),to_date('2020-12-31 00:00:00') from dual -- '01-OCT-2020', '31-DEC-2020'
+	union all select 'PosAdm2021Q1', 1, 1, NULL, to_date('2021-01-01 00:00:00'),to_date('2021-03-31 00:00:00') from dual -- '01-JAN-2021', '31-MAR-2021'
+	union all select 'PosAdm2021Q2', 1, 1, NULL, to_date('2021-04-01 00:00:00'),to_date('2021-06-30 00:00:00') from dual -- '01-APR-2021', '30-JUN-2021'
+	union all select 'PosAdm2021Q3', 1, 1, NULL, to_date('2021-07-01 00:00:00'),to_date('2021-09-30 00:00:00') from dual -- '01-JUL-2021', '30-SEP-2021'
+	union all select 'PosAdm2021Q4', 1, 1, NULL, to_date('2021-10-01 00:00:00'),to_date('2021-12-31 00:00:00') from dual -- '01-OCT-2021', '31-DEC-2021'
+;
 commit;
 -- Assume the data were updated on the date this script is run if source_data_updated_date is null
 update fource_cohort_config
 	set source_data_updated_date = nvl((select source_data_updated_date from fource_config),sysdate)
 	where source_data_updated_date is null;
 commit;
+select * from fource_cohort_config;
+
+WHENEVER SQLERROR CONTINUE;
+drop table fource_covid_tests;
+drop table fource_admissions;
+drop table temp_fource_admissions;
+drop table fource_icu;
+drop table fource_death;
+drop table fource_first_covid_tests;
+drop table fource_cohort_patients;
+drop table fource_patients;
+drop table fource_observations;
+drop table fource_date_list;
+drop table fource_LocalPatientClinicalC;
+drop table fource_LocalPatientSummary;
+drop table fource_LocalPatientObs;
+drop table fource_LocalPatientRace;
+drop table fource_LocalCohorts;
+drop table fource_LocalDailyCounts;
+drop table fource_LocalClinicalCourse;
+drop table fource_LocalAgeSex;
+drop table fource_LocalLabs;
+drop table fource_LocalDiagProcMed;
+drop table fource_LocalRaceByLocalCode;
+drop table fource_DailyCounts;
+drop table fource_CLinicalCourse;
+drop table fource_AgeSex;
+drop table fource_Labs;
+drop table fource_DiagProcMed;
+drop table fource_RaceBy4CECode;
+drop table fource_LocalRaceBy4CECode;
+drop table fource_Cohorts;
+drop table fource_RaceByLocalCode;
+drop table fource_LabCodes;
+drop table fource_LocalPatientMapping;
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
 
 --##############################################################################
 --##############################################################################
@@ -2325,7 +2652,7 @@ alter table fource_covid_tests add primary key (patient_num, test_result, test_d
 
 insert into fource_covid_tests
 	select distinct f.patient_num, m.code, trunc(start_date)
-		from @crcSchema.observation_fact f --with (nolock)
+		from "&&crcSchema".observation_fact f --with (nolock)
 			inner join fource_code_map m
 				on f.concept_cd = m.local_code and m.code in ('covidpos','covidneg','covidU071');
 commit;
@@ -2342,32 +2669,35 @@ create table fource_admissions (
 ); 
 
 alter table fource_admissions add primary key (patient_num, admission_date, discharge_date);
-insert into fource_admissions
-	select distinct patient_num, cast(start_date as date), nvl(cast(end_date as date),'01-JAN-2199') -- a very future date for missing discharge dates
+
+-- speeding up the execution
+create table temp_fource_admissions nologging parallel as
+	select distinct patient_num patient_num, cast(start_date as date) admission_date, nvl(cast(end_date as date),to_date('2199-01-01 00:00:00')) discharge_date -- a very future date for missing discharge dates
 	from (
 		-- Select by inout_cd
 		select patient_num, trunc(start_date) start_date, trunc(end_date) end_date
-			from @crcSchema.visit_dimension
-			where trunc(start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+			from "&&crcSchema".visit_dimension
+			where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 				and patient_num in (select patient_num from fource_covid_tests)
 				and inout_cd in (select local_code from fource_code_map where code = 'inpatient_inout_cd')
 		union all
 		-- Select by location_cd
 		select patient_num, trunc(start_date), trunc(end_date)
-			from @crcSchema.visit_dimension v
-			where trunc(start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+			from "&&crcSchema".visit_dimension v
+			where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 				and patient_num in (select patient_num from fource_covid_tests)
 				and location_cd in (select local_code from fource_code_map where code = 'inpatient_location_cd')
 		union all
 		-- Select by concept_cd
 		select f.patient_num, trunc(f.start_date), nvl(trunc(f.end_date),trunc(v.end_date))
-			from @crcSchema.observation_fact f
-				inner join @crcSchema.visit_dimension v
+			from "&&crcSchema".observation_fact f
+				inner join "&&crcSchema".visit_dimension v
 					on v.encounter_num=f.encounter_num and v.patient_num=f.patient_num
-			where trunc(f.start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+			where trunc(f.start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 				and f.patient_num in (select patient_num from fource_covid_tests)
 				and f.concept_cd in (select local_code from fource_code_map where code = 'inpatient_concept_cd')
 	) t;
+insert into fource_admissions select * from temp_fource_admissions;
 commit;
 
 --select * from FOURCE_ADMISSIONS;
@@ -2378,6 +2708,7 @@ commit;
 --select 'Number of admissions with discharge before admission: ' || count(*) from fource_admissions where discharge_date < admission_date;
 
 delete from fource_admissions where discharge_date < admission_date;
+commit;
 
 --------------------------------------------------------------------------------
 -- Create a list of dates where patients were in the ICU.
@@ -2391,28 +2722,28 @@ create table fource_icu (
 alter table fource_icu add primary key (patient_num, start_date, end_date);
 --truncate table fource_icu;
 insert into fource_icu
-		select distinct patient_num, cast(start_date as date), nvl(cast(end_date as date), '01-JAN-2199') -- a very future date for missing end dates
+		select distinct patient_num, cast(start_date as date), nvl(cast(end_date as date), to_date('2199-01-01 00:00:00')) -- a very future date for missing end dates
 		from (
 			-- Select by patient_dimension inout_cd
 			select patient_num, trunc(start_date) start_date, trunc(end_date) end_date
-				from @crcSchema.visit_dimension
-				where trunc(start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+				from "&&crcSchema".visit_dimension
+				where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 					and patient_num in (select patient_num from fource_covid_tests)
 					and inout_cd in (select local_code from fource_code_map where code = 'icu_inout_cd')
 			union all
 			-- Select by location_cd
 			select patient_num, trunc(start_date) start_date, trunc(end_date) end_date --***** SOMEONE PLEASE AUDIT THIS SECTION******
-				from @crcSchema.visit_dimension v
-				where trunc(start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+				from "&&crcSchema".visit_dimension v
+				where trunc(start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 					and patient_num in (select patient_num from fource_covid_tests)
 					and location_cd in (select local_code from fource_code_map where code = 'icu_location_cd')
 			union all
 			-- Select by concept_cd
 			select f.patient_num, trunc(f.start_date) start_date, nvl(trunc(f.end_date),trunc(v.end_date)) end_date
-				from @crcSchema.observation_fact f
-					inner join @crcSchema.visit_dimension v
+				from "&&crcSchema".observation_fact f
+					inner join "&&crcSchema".visit_dimension v
 						on v.encounter_num=f.encounter_num and v.patient_num=f.patient_num
-				where trunc(f.start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+				where trunc(f.start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 					and f.patient_num in (select patient_num from fource_covid_tests)
 					and f.concept_cd in (select local_code from fource_code_map where code = 'icu_concept_cd')
             union all
@@ -2422,11 +2753,11 @@ insert into fource_icu
             select distinct f.patient_num, trunc(f.start_date) start_date, 
                 case when trunc(f.end_date)> trunc(v.end_date)  then trunc(f.end_date)
                     else nvl(trunc(v.end_date), '01-JAN-2199') end end_date
-				from @crcSchema.observation_fact f
-					inner join @crcSchema.visit_dimension v
+				from "&&crcSchema".observation_fact f
+					inner join "&&crcSchema".visit_dimension v
 						on v.encounter_num=f.encounter_num and v.patient_num=f.patient_num
                     inner join fource_icu_location l on l.location_cd = f.location_cd
-				where trunc(f.start_date) >= (select trunc(eval_start_date) from fource_config where rownum = 1)
+				where trunc(f.start_date) >= (select trunc(start_date) from fource_config where rownum = 1)
 					and f.patient_num in (select patient_num from fource_covid_tests)
                     order by patient_num, start_date
 					--and f.concept_cd in (select local_code from fource_code_map where code = 'icu_fact_location_cd') --**** TODO: CHECK SHOULD THIS BE CONDITIONAL MICHELE FIX THIS 
@@ -2451,7 +2782,7 @@ alter table fource_death add primary key (patient_num);
 insert into fource_death
         select patient_num, death_date from (
 		select patient_num, nvl(death_date,'01-JAN-1900') death_date 
-		from @crcSchema.patient_dimension
+		from "&&crcSchema".patient_dimension
 		where (death_date is not null or vital_status_cd in ('Y', 'DEM|VITAL STATUS:D'))
 			and patient_num in (select patient_num from fource_covid_tests)       
             )t
@@ -2539,9 +2870,7 @@ insert into fource_cohort_patients (cohort, patient_num, admission_date, source_
 			from fource_first_covid_tests t
 				inner join fource_admissions a
 					on t.patient_num=a.patient_num
-						--and datediff(dd,t.first_pos_date,a.admission_date) between @blackout_days_before and @blackout_days_after
                         and trunc(a.admission_date) - trunc(t.first_pos_date) between -7 and 14
-
 			where t.first_pos_date is not null
 			group by t.patient_num
 		) t
@@ -2731,6 +3060,8 @@ create index fource_cohort_patients_ndx on fource_cohort_patients(patient_num);
 --------------------------------------------------------------------------------
 -- Add diagnoses (ICD9) going back 365 days from admission 
 --------------------------------------------------------------------------------
+/*
+--ICD 9 is not in us after 2015 at KU
 insert into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
 	select distinct
 		p.cohort,
@@ -2742,17 +3073,18 @@ insert into fource_observations (cohort, patient_num, severe, concept_type, conc
 		trunc(f.start_date) - trunc(p.admission_date),
 		-999,
 		-999
- 	from @crcSchema.observation_fact f --with (nolock)
+ 	from "&&crcSchema".observation_fact f --with (nolock)
 		inner join fource_cohort_patients p 
 			on f.patient_num=p.patient_num
 				--and cast(trunc(f.start_date) as date) between dateadd(dd,@lookback_days,p.admission_date) and p.source_data_updated_date
                 and trunc(f.start_date) between trunc(p.admission_date)-365 and trunc(p.source_data_updated_date)
 	where f.concept_cd like (select code_prefix_icd9cm || '%' from fource_config where rownum = 1);-- and code_prefix_icd9cm <>'';
 commit;    
-
+*/
 --------------------------------------------------------------------------------
 -- Add diagnoses (ICD10) going back 365 days
 --------------------------------------------------------------------------------
+select 1 from dual;
 insert into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
 	select distinct
 		p.cohort,
@@ -2764,18 +3096,19 @@ insert into fource_observations (cohort, patient_num, severe, concept_type, conc
 		trunc(f.start_date) - trunc(p.admission_date),
 		-999,
 		-999
- 	from @crcSchema.observation_fact f --with (nolock)
+ 	from observation_fact_icd10 f --with (nolock)
 		inner join fource_cohort_patients p 
 			on f.patient_num=p.patient_num 
 				--and cast(trunc(f.start_date) as date) between dateadd(dd,@lookback_days,p.admission_date) and p.source_data_updated_date
                 and trunc(f.start_date) between trunc(p.admission_date)-365 and trunc(p.source_data_updated_date)
-	where f.concept_cd like (select code_prefix_icd10cm || '%' from fource_config where rownum = 1);-- and code_prefix_icd10cm <>'';
+	where f.concept_cd like (select code_prefix_icd10cm || '%' from fource_config where rownum = 1) 
+;  
 commit;
 --select count(distinct patient_num) from fource_observations; --293601
 --------------------------------------------------------------------------------
 -- Add medications (Med Class) going back 365 days
 --------------------------------------------------------------------------------
-insert into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
+insert /*+ APPEND */ into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
 	select distinct
 		p.cohort,
 		p.patient_num,
@@ -2787,7 +3120,7 @@ insert into fource_observations (cohort, patient_num, severe, concept_type, conc
 		-999,
 		-999
 	from fource_med_map m
-		inner join @crcSchema.observation_fact f --with (nolock)
+		inner join "&&crcSchema".observation_fact f --with (nolock)
 			on f.concept_cd = m.local_med_code
 		inner join fource_cohort_patients p 
 			on f.patient_num=p.patient_num 
@@ -2799,7 +3132,7 @@ commit;
 --------------------------------------------------------------------------------
 -- Add labs (LOINC) going back 60 days (two months)
 --------------------------------------------------------------------------------
-insert into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
+insert /*+ APPEND */ into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
 	select p.cohort,
 		p.patient_num,
 		p.severe,
@@ -2810,7 +3143,7 @@ insert into fource_observations (cohort, patient_num, severe, concept_type, conc
 		avg(f.nval_num*l.scale_factor),
 		ln(avg(f.nval_num*l.scale_factor) + 0.5) -- natural log (ln), not log base 10; using log(avg()) rather than avg(log()) on purpose
 	from fource_lab_map l
-		inner join @crcSchema.observation_fact f --with (nolock)
+		inner join observation_fact_lab f --with (nolock)
 			on f.concept_cd=l.local_lab_code and nvl(nullif(f.units_cd,''),'DEFAULT')=l.local_lab_units
 		inner join fource_cohort_patients p 
 			on f.patient_num=p.patient_num
@@ -2825,7 +3158,7 @@ commit;
 -- Add procedures (Proc Groups) going back 365 days
 --------------------------------------------------------------------------------
 --select * from fource_proc_map;
-insert into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
+insert /*+ APPEND */ into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
 	select distinct
 		p.cohort,
 		p.patient_num,
@@ -2837,7 +3170,7 @@ insert into fource_observations (cohort, patient_num, severe, concept_type, conc
 		-999,
 		-999
  	from fource_proc_map x
-		inner join @crcSchema.observation_fact f --with (nolock)
+		inner join "&&crcSchema".observation_fact f --with (nolock)
 			on f.concept_cd = x.local_proc_code
 		inner join fource_cohort_patients p 
 			on f.patient_num=p.patient_num 
@@ -2849,7 +3182,7 @@ commit;
 -- Flag observations that contribute to the disease severity definition
 --------------------------------------------------------------------------------
 --test select * from fource_observations where concept_code = 'ARDS';
-insert into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
+insert /*+ APPEND */  into fource_observations (cohort, patient_num, severe, concept_type, concept_code, calendar_date, days_since_admission, value, logvalue)
 	-- Any PaCO2 or PaO2 lab test
 	select cohort, patient_num, severe, 'SEVERE-LAB' concept_type, 'BloodGas' concept_code, calendar_date, days_since_admission, avg(value), avg(logvalue)
 		from fource_observations
@@ -2913,9 +3246,9 @@ commit;
 update fource_observations f
 set f.severe=1
 where exists(select patient_num,cohort
-	     from fource_cohort_patients cwhere c.severe=0 and 
+	     from fource_cohort_patients c where c.severe=0 and 
 f.patient_num = c.patient_num and f.cohort = c.cohort);
-
+commit;
 --------------------------------------------------------------------------------
 -- Add death dates to patients who have died.
 --------------------------------------------------------------------------------
@@ -3015,9 +3348,9 @@ commit;
 --------------------------------------------------------------------------------
 -- LocalPatientClinicalCourse: Status by number of days since admission
 --------------------------------------------------------------------------------
---select * from fource_LocalPatientClinicalCourse;
---drop table fource_LocalPatientClinicalCourse;
-create table fource_LocalPatientClinicalCourse (
+--select * from fource_LocalPatientClinicalC;
+--drop table fource_LocalPatientClinicalC;
+create table fource_LocalPatientClinicalC (
 	siteid varchar(50) not null,
 	cohort varchar(50) not null,
 	patient_num int not null,
@@ -3027,11 +3360,11 @@ create table fource_LocalPatientClinicalCourse (
 	severe int not null,
 	in_icu int not null,
 	dead int not null
-);
+) nocompress ;
 
-alter table fource_LocalPatientClinicalCourse add primary key (cohort, patient_num, days_since_admission, siteid);
+alter table fource_LocalPatientClinicalC add primary key (cohort, patient_num, days_since_admission, siteid);
 -- Get the list of dates and flag the ones where the patients were severe or deceased
-insert into fource_LocalPatientClinicalCourse 
+insert into fource_LocalPatientClinicalC 
     (siteid, cohort, patient_num, days_since_admission, calendar_date, in_hospital, severe, in_icu, dead)
 	select (select siteid from fource_config where rownum = 1) siteid, 
         p.cohort, p.patient_num, 
@@ -3052,10 +3385,10 @@ commit; -- 5 minutes
     
 
 -- Flag the days when the patients was in the hospital
-merge into fource_LocalPatientClinicalCourse p
+merge into fource_LocalPatientClinicalC p
 	using (
     select distinct p.patient_num,  p.calendar_date
-    from fource_LocalPatientClinicalCourse p 
+    from fource_LocalPatientClinicalC p 
     inner join fource_admissions a on a.patient_num = p.patient_num
         and trunc(a.admission_date)>= trunc(p.calendar_date)-days_since_admission --TODO: Check the logic again - MICHELE IS THE SUBTRACTION CORRECT
 		and trunc(a.admission_date)<=trunc(p.calendar_date)
@@ -3067,26 +3400,26 @@ merge into fource_LocalPatientClinicalCourse p
 commit;
 
 -- Flag the days when the patient was in the ICU, making sure the patient was also in the hospital on those days
-merge into fource_LocalPatientClinicalCourse p
+merge into fource_LocalPatientClinicalC p
     using ( 
     --with pt_icu as (
     select patient_num,  calendar_date, in_hospital, in_icu from (
     select distinct p.patient_num,  p.calendar_date, p.in_hospital, p.in_icu
-            from fource_LocalPatientClinicalCourse p
+            from fource_LocalPatientClinicalC p
 			inner join fource_icu i
 				on i.patient_num=p.patient_num 
 					and trunc(i.start_date)>=trunc(p.calendar_date)-days_since_admission
 					and trunc(i.start_date)<=trunc(p.calendar_date)
 					and trunc(i.end_date)>=trunc(p.calendar_date)
                     and (select icu_data_available from fource_config where rownum=1)=1 ))d
-                    --group by patient_num,  calendar_date, in_hospital ;--order by patient_num, calendar_date);
+                    --group by patient_num,  calendar_date, in_hospital ; --order by patient_num, calendar_date)
                 --select patient_num, calendar_date, in_hospital, in_icu from pt_icu )d
     on (d.patient_num=p.patient_num and d.calendar_date=p.calendar_date)
     when matched then
         update set p.in_icu=p.in_hospital;
 commit;
 --2005 rows 70032
---select count(distinct patient_num) from fource_LocalPatientClinicalCourse where in_icu = 1; --52 
+--select count(distinct patient_num) from fource_LocalPatientClinicalC where in_icu = 1; --52 
 --------------------------------------------------------------------------------
 -- LocalPatientSummary: Dates, outcomes, age, and sex
 --------------------------------------------------------------------------------
@@ -3109,7 +3442,7 @@ create table fource_LocalPatientSummary (
 	age_group varchar(50) not null,
 	age int not null,
 	sex varchar(50) not null
-);
+) nocompress ;
 alter table fource_LocalPatientSummary add primary key (cohort, patient_num, siteid);
 -- Get the admission, severe, and death dates; and age and sex.
 insert into fource_LocalPatientSummary
@@ -3140,7 +3473,7 @@ insert into fource_LocalPatientSummary
 		(case when p.age_in_years_num is null then -999 when p.age_in_years_num<0 then -999 else age_in_years_num end) age,
 		nvl(substr(m.code,13,99),'other')
 	from fource_cohort_patients c
-		left outer join @crcSchema.patient_dimension p
+		left outer join "&&crcSchema".patient_dimension p
 			on p.patient_num=c.patient_num
 		left outer join fource_code_map m
 			on p.sex_cd = m.local_code
@@ -3158,7 +3491,7 @@ using (select p.sex, p.patient_num
 				select patient_num,
 					max(case when m.code='sex_fact:male' then 1 else 0 end) male,
 					max(case when m.code='sex_fact:female' then 1 else 0 end) female
-				from @crcSchema.observation_fact f --with (nolock)
+				from "&&crcSchema".observation_fact f --with (nolock)
 					inner join fource_code_map m
 						on f.concept_cd=m.local_code
 							and m.code in ('sex_fact:male','sex_fact:female')
@@ -3185,12 +3518,12 @@ commit;
                                             else x.last_discharge_date end),
                    s.still_in_hospital = (case when x.last_discharge_date>s.source_data_updated_date then 1 else 0 end);
 commit;
---select * from fource_LocalPatientClinicalCourse where in_icu = 1;
+--select * from fource_LocalPatientClinicalC where in_icu = 1;
 -- Get earliest ICU date for patients who were in the ICU.
 merge into fource_LocalPatientSummary s
       using (
 			select cohort, patient_num, min(calendar_date) icu_date
-					from fource_LocalPatientClinicalCourse
+					from fource_LocalPatientClinicalC
 					where in_icu=1
 					group by cohort, patient_num
 			) x
@@ -3202,8 +3535,8 @@ commit;
 --------------------------------------------------------------------------------
 -- LocalPatientObservations: Diagnoses, procedures, medications, and labs
 --------------------------------------------------------------------------------
---drop table fource_LocalPatientObservations;
-create table fource_LocalPatientObservations (
+--drop table fource_LocalPatientObs;
+create table fource_LocalPatientObs (
 	siteid varchar(50) not null,
 	cohort varchar(50) not null,
 	patient_num int not null,
@@ -3211,9 +3544,9 @@ create table fource_LocalPatientObservations (
 	concept_type varchar(50) not null,
 	concept_code varchar(50) not null,
 	value numeric(18,5) not null
-);
-alter table fource_LocalPatientObservations add primary key (cohort, patient_num, days_since_admission, concept_type, concept_code, siteid);
-insert into fource_LocalPatientObservations
+) nocompress ;
+alter table fource_LocalPatientObs add primary key (cohort, patient_num, days_since_admission, concept_type, concept_code, siteid);
+insert into fource_LocalPatientObs
 	select (select siteid from fource_config where rownum = 1), 
     cohort, patient_num, days_since_admission, concept_type, concept_code, value
 	from fource_observations;
@@ -3228,7 +3561,7 @@ create table fource_LocalPatientRace (
 	patient_num int not null,
 	race_local_code varchar(500) not null,
 	race_4ce varchar(100) not null
-);
+) nocompress;
 alter table fource_LocalPatientRace add primary key (cohort, patient_num, race_local_code, siteid);
 insert into fource_LocalPatientRace
 		select distinct (select siteid from fource_config where rownum = 1) siteid, cohort, patient_num, race_local_code, race_4ce
@@ -3236,7 +3569,7 @@ insert into fource_LocalPatientRace
 			-- Race from the patient_dimension table
 			select c.cohort, c.patient_num, m.local_code race_local_code, substr(m.code,14,999) race_4ce
 				from fource_cohort_patients c
-					inner join @crcSchema.patient_dimension p
+					inner join "&&crcSchema".patient_dimension p
 						on p.patient_num=c.patient_num
 					inner join fource_code_map m
 						on p.race_cd = m.local_code
@@ -3245,7 +3578,7 @@ insert into fource_LocalPatientRace
 			-- Race from the observation_fact table
 			select c.cohort, c.patient_num, m.local_code race_local_code, substr(m.code,11,999) race_4ce
 				from fource_cohort_patients c
-					inner join @crcSchema.observation_fact p --with (nolock)
+					inner join "&&crcSchema".observation_fact p --with (nolock)
 						on p.patient_num=c.patient_num
 					inner join fource_code_map m
 						on p.concept_cd = m.local_code
@@ -3325,7 +3658,7 @@ insert into fource_LocalDailyCounts
 		sum(in_hospital*severe), 
 		(case when x.icu_data_available=0 then -999 else sum(in_icu*severe) end)
 	from fource_config x
-		cross join fource_LocalPatientClinicalCourse c
+		cross join fource_LocalPatientClinicalC c
 	group by cohort, calendar_date, icu_data_available, death_data_available;
     commit;
     
@@ -3334,7 +3667,11 @@ insert into fource_LocalDailyCounts
 --select * from fource_LocalDailyCounts;
 --select * from fource_LocalPatientSummary where icu_date >to_date('01-JAN-1900', 'DD-MON-YYYY') order by cohort, admission_date;
 --**************TODO: MICHELE ERROR Unable to get stable rows in source*****************
-/*merge into fource_LocalDailyCounts c
+select 1 from dual;
+
+/*
+
+merge into fource_LocalDailyCounts c
     using (
       select calendar_date, cohort, icu_date, cumm_daily_count from (
       select distinct d.calendar_date, d.cohort, a.icu_date, count(*) cumm_daily_count
@@ -3389,7 +3726,7 @@ insert into fource_LocalClinicalCourse
 		(case when x.icu_data_available=0 then -999 else sum(c.in_icu*p.severe) end), 
 		(case when x.death_data_available=0 then -999 else sum(c.dead*p.severe) end) 
 	from fource_config x
-		cross join fource_LocalPatientClinicalCourse c
+		cross join fource_LocalPatientClinicalC c
 		inner join fource_cohort_patients p
 			on c.cohort=p.cohort and c.patient_num=p.patient_num
 	group by c.cohort, c.days_since_admission, icu_data_available, death_data_available;
@@ -4005,15 +4342,15 @@ insert into fource_LabCodes
 -- Delete cohorts that should not be included in Phase2 patient level files
 --------------------------------------------------------------------------------
 --Phase 2 patient level tables
-delete from fource_LocalPatientClinicalCourse where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
+delete from fource_LocalPatientClinicalC where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
 delete from fource_LocalPatientSummary where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
-delete from fource_LocalPatientObservations where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
+delete from fource_LocalPatientObs where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
 delete from fource_LocalPatientRace where cohort in (select cohort from fource_cohort_config where include_in_phase2=0);
 
 --------------------------------------------------------------------------------
 -- Remove rows where all values are zeros to reduce the size of the files
 --------------------------------------------------------------------------------
-delete from fource_LocalPatientClinicalCourse where in_hospital=0 and severe=0 and in_icu=0 and dead=0;
+delete from fource_LocalPatientClinicalC where in_hospital=0 and severe=0 and in_icu=0 and dead=0;
 
 --------------------------------------------------------------------------------
 -- Replace the patient_num with a random study_num integer Phase2 tables
@@ -4037,15 +4374,16 @@ insert into fource_LocalPatientMapping (siteid, patient_num, study_num)
         where (select replace_patient_num from fource_config where  rownum = 1) = 1;
 
 
-ALTER TABLE fource_LocalPatientClinicalCourse ADD patient_num_orig int;
-update fource_LocalPatientClinicalCourse set patient_num_orig = patient_num;               
-merge into fource_LocalPatientClinicalCourse t 
+ALTER TABLE fource_LocalPatientClinicalC ADD patient_num_orig int;
+update fource_LocalPatientClinicalC set patient_num_orig = patient_num;               
+merge into fource_LocalPatientClinicalC t 
 using (select patient_num, study_num 
         from fource_LocalPatientMapping where (select replace_patient_num from fource_config where rownum = 1) = 1) m
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
-ALTER TABLE fource_LocalPatientClinicalCourse drop column patient_num_orig;
+
+ALTER TABLE fource_LocalPatientClinicalC drop column patient_num_orig;
 commit;
 
 ALTER TABLE fource_LocalPatientSummary ADD patient_num_orig int;
@@ -4059,15 +4397,15 @@ update set patient_num = m.study_num;
 ALTER TABLE fource_LocalPatientSummary drop column patient_num_orig;
 commit;
 
-ALTER TABLE fource_LocalPatientObservations ADD patient_num_orig int;
-update fource_LocalPatientObservations set patient_num_orig = patient_num;               
-merge into fource_LocalPatientObservations t 
+ALTER TABLE fource_LocalPatientObs ADD patient_num_orig int;
+update fource_LocalPatientObs set patient_num_orig = patient_num;               
+merge into fource_LocalPatientObs t 
 using (select patient_num, study_num 
         from fource_LocalPatientMapping where (select replace_patient_num from fource_config where rownum = 1) = 1) m
 on (t.patient_num_orig = m.patient_num)
 when matched then
 update set patient_num = m.study_num;
-ALTER TABLE fource_LocalPatientObservations drop column patient_num_orig;
+ALTER TABLE fource_LocalPatientObs drop column patient_num_orig;
 commit;
 
 ALTER TABLE fource_LocalPatientRace ADD patient_num_orig int;
@@ -4098,9 +4436,9 @@ as tables were being buily
 -- * It cannot have any blank spaces or special characters.
 --------------------------------------------------------------------------------
 --Phase 2 patient level tables
-update fource_LocalPatientClinicalCourse set siteid = (select siteid from fource_config)
+update fource_LocalPatientClinicalC set siteid = (select siteid from fource_config)
 update fource_LocalPatientSummary set siteid = (select siteid from fource_config)
-update fource_LocalPatientObservations set siteid = (select siteid from fource_config)
+update fource_LocalPatientObs set siteid = (select siteid from fource_config)
 update fource_LocalPatientRace set siteid = (select siteid from fource_config)
 update fource_LocalPatientMapping set siteid = (select siteid from fource_config)
 --Phase 2 aggregate count tables
@@ -4138,6 +4476,8 @@ update fource_LabCodes set siteid = (select siteid from fource_config)
 --##############################################################################
 
 
+exit;
+/*
 
 --******************************************************************************
 --******************************************************************************
@@ -4167,9 +4507,9 @@ update fource_LabCodes set siteid = (select siteid from fource_config)
 	select * from fource_LocalRaceByLocalCode where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, race_local_code;
 	select * from fource_LocalRaceBy4CECode where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, race_4ce;
 	--Phase 2 patient-level files
-	select * from fource_LocalPatientClinicalCourse where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num, days_since_admission;
+	select * from fource_LocalPatientClinicalC where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num, days_since_admission;
 	select * from fource_LocalPatientSummary where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num;
-	select * from fource_LocalPatientObservations where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num, days_since_admission, concept_type, concept_code;
+	select * from fource_LocalPatientObs where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num, days_since_admission, concept_type, concept_code;
 	select * from fource_LocalPatientRace where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  cohort, patient_num, race_local_code;
 	select * from fource_LocalPatientMapping where (select output_phase2_as_columns from fource_config where rownum=1) = 1 order by  patient_num;
 
@@ -4272,7 +4612,7 @@ spool off
 
 
 spool c:\Devtools\NCATS\covid\4cescripts\LocalPatientClinicalCourse.csv
-select s LocalPatientClinicalCourseCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,calendar_date,in_hospital,severe,in_icu,dead' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(calendar_date as varchar2(2000)) || ',' || cast(in_hospital as varchar2(2000)) || ',' || cast(severe as varchar2(2000)) || ',' || cast(in_icu as varchar2(2000)) || ',' || cast(dead as varchar2(2000)) from fource_LocalPatientClinicalCourse union all select 9999999 z, '' from dual) t order by z;
+select s LocalPatientClinicalCourseCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,calendar_date,in_hospital,severe,in_icu,dead' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(calendar_date as varchar2(2000)) || ',' || cast(in_hospital as varchar2(2000)) || ',' || cast(severe as varchar2(2000)) || ',' || cast(in_icu as varchar2(2000)) || ',' || cast(dead as varchar2(2000)) from fource_LocalPatientClinicalC union all select 9999999 z, '' from dual) t order by z;
 spool off
 
 
@@ -4282,7 +4622,7 @@ spool off
 
 
 spool c:\Devtools\NCATS\covid\4cescripts\LocalPatientObservations.csv
-select s LocalPatientObservationsCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,concept_type,concept_code,value' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission,concept_type,concept_code) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(concept_type as varchar2(2000)) || ',' || cast(concept_code as varchar2(2000)) || ',' || cast(value as varchar2(2000)) from fource_LocalPatientObservations union all select 9999999 z, '' from dual) t order by z;
+select s LocalPatientObservationsCSV from ( select 0 z, 'siteid,cohort,patient_num,days_since_admission,concept_type,concept_code,value' s from dual union all select row_number() over (order by cohort,patient_num,days_since_admission,concept_type,concept_code) z, cast(siteid as varchar2(2000)) || ',' || cast(cohort as varchar2(2000)) || ',' || cast(patient_num as varchar2(2000)) || ',' || cast(days_since_admission as varchar2(2000)) || ',' || cast(concept_type as varchar2(2000)) || ',' || cast(concept_code as varchar2(2000)) || ',' || cast(value as varchar2(2000)) from fource_LocalPatientObs union all select 9999999 z, '' from dual) t order by z;
 spool off
 
 
@@ -4354,8 +4694,8 @@ drop table fource_LocalRaceByLocalCode
 drop table fource_LocalRaceBy4CECode 
 -- Phase 2 patient-level files
 drop table fource_LocalPatientSummary 
-drop table fource_LocalPatientClinicalCourse 
-drop table fource_LocalPatientObservations 
+drop table fource_LocalPatientClinicalC 
+drop table fource_LocalPatientObs 
 drop table fource_LocalPatientRace 
 drop table fource_LocalPatientMapping 
 
@@ -4474,8 +4814,8 @@ end
 		 || '; alter table ' || save_phase2_as_prefix || 'LocalRaceBy4CECode add primary key (cohort, race_4ce, siteid);'
 		--Phase 2 patient-level files
 		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientSummary from fource_LocalPatientSummary;'
-		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientClinicalCourse from fource_LocalPatientClinicalCourse;'
-		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientObservations from fource_LocalPatientObservations;'
+		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientClinicalCourse from fource_LocalPatientClinicalC;'
+		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientObservations from fource_LocalPatientObs;'
 		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientRace from fource_LocalPatientRace;'
 		 || 'select * into ' || save_phase2_as_prefix || 'LocalPatientMapping from fource_LocalPatientMapping;'
 		 || '; alter table ' || save_phase2_as_prefix || 'LocalPatientClinicalCourse add primary key (cohort, patient_num, days_since_admission, siteid);'
